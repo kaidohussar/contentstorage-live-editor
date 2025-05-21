@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2020", // Output modern JavaScript, Babel will handle ES5
+    "module": "ESNext", // Let Rollup handle modules
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "dist", // Not strictly used by Rollup plugin, but good practice
+    "declaration": true, // Generates .d.ts files
+    "declarationDir": "dist/types",
+    "sourceMap": true // Generate source maps for debugging
+  },
+  "include": ["src/**/*"], // Which files to include
+  "exclude": ["node_modules", "dist"]
+}
