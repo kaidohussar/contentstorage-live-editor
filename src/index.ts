@@ -1,18 +1,131 @@
-(function() {
-  const scriptTag = document.currentScript;
-  if (!scriptTag) {
-    console.error("Live Editor: Could not find the script tag. Ensure this script is not loaded with `defer` in a way that prevents `document.currentScript` access during initial execution.");
+import { COMMUNICATION_TIMEOUT_MS, MESSAGE_TYPES } from './contants';
+
+(function () {
+  const currentScript = document.currentScript as HTMLScriptElement;
+  if (!currentScript) {
+    console.error(
+      "CDN Script: Could not determine the current script element. This is necessary to read URL parameters from the script's own URL. Ensure the script is loaded via a standard <script> tag."
+    );
+    return;
+  }
+  const scriptSrc = currentScript.src;
+  console.log(`CDN Script: Loaded from ${scriptSrc}`);
+
+  // --- 2. Check for 'contentstorage-live-editor' URL Parameter ---
+  let liveEditorParamValue: string | null = null;
+  try {
+    const url = new URL(scriptSrc);
+    liveEditorParamValue = url.searchParams.get('contentstorage-live-editor');
+  } catch (e) {
+    console.error(
+      "CDN Script: Could not parse script URL. Ensure it's a valid URL.",
+      e
+    );
     return;
   }
 
-  const appKey = scriptTag.dataset.appKey;
+  if (!liveEditorParamValue) {
+    console.warn(
+      "CDN Script: The 'contentstorage-live-editor' URL parameter is MISSING in the script's src. This is a prerequisite. Halting further iframe-specific operations."
+    );
+    // You might want to display a message in the iframe or simply stop execution
+    // For example, document.body.innerHTML = "<p>Error: Configuration parameter missing.</p>";
+    return;
+  }
 
-  if (appKey) {
-    console.log("Live Editor initialized with Application Key:", appKey);
-    // --- Your script's logic using appKey ---
-    // Example: initializeYourEditor(appKey);
-    // -----------------------------------------
+  if (window.parent && window.parent !== window) {
+    console.log(
+      'CDN Script: Running inside an iframe. Setting up communication with parent and initiating handshake.'
+    );
+
+    let handshakeSuccessful = false;
+    let handshakeTimeoutId: number | undefined;
+
+    // Handler for messages from the parent
+    const messageFromParentHandler = (event: MessageEvent) => {
+      // IMPORTANT SECURITY NOTE:
+      // Always validate event.origin to ensure messages are coming from the expected parent domain.
+      // For example: if (event.origin !== "https://your-parent-app.com") {
+      //   console.warn("CDN Script: Received message from unexpected origin:", event.origin);
+      //   return;
+      // }
+
+      if (event.source === window.parent && event.data) {
+        if (event.data.type === MESSAGE_TYPES.HANDSHAKE_ACKNOWLEDGE) {
+          if (!handshakeSuccessful) {
+            // Process handshake ack only once
+            handshakeSuccessful = true;
+            console.log(
+              'CDN Script: Received handshake acknowledgment from parent:',
+              event.data.payload
+            );
+            cleanupHandshakeResources();
+            console.log(
+              'CDN Script: Parent communication handshake successful. Ready for further messages.'
+            );
+            // Now you can set up listeners for other types of messages or enable functionality
+            // that depends on a successful handshake.
+          }
+        } else {
+          // Handle other types of messages from the parent after handshake
+          if (handshakeSuccessful) {
+            console.log(
+              'CDN Script: Received further message from parent:',
+              event.data
+            );
+            // Process other messages here
+          } else {
+            console.warn(
+              'CDN Script: Received message from parent before handshake was complete. Ignoring:',
+              event.data
+            );
+          }
+        }
+      }
+    };
+
+    const cleanupHandshakeResources = () => {
+      if (handshakeTimeoutId) {
+        clearTimeout(handshakeTimeoutId);
+        handshakeTimeoutId = undefined;
+      }
+      // We keep the general message listener active for further communication
+      // window.removeEventListener("message", messageFromParentHandler); // Only remove if no further messages are expected
+    };
+
+    // Add listener for parent's response (for handshake and subsequent messages)
+    window.addEventListener('message', messageFromParentHandler);
+
+    // Initiate Handshake: Send handshake message to parent
+    const handshakeMessage = {
+      type: MESSAGE_TYPES.HANDSHAKE_INITIATE,
+      payload: `Hello from iframe script (editor param: ${liveEditorParamValue}). Initiating handshake.`,
+    };
+
+    // Post message to the parent window.
+    // IMPORTANT SECURITY NOTE:
+    // Replace "*" with the specific target origin of the parent application for enhanced security.
+    console.log(
+      'CDN Script: Sending handshake message to parent:',
+      handshakeMessage
+    );
+    window.parent.postMessage(handshakeMessage, '*');
+
+    // Timeout for the initial handshake
+    handshakeTimeoutId = window.setTimeout(() => {
+      if (!handshakeSuccessful) {
+        console.warn(
+          'CDN Script: Parent communication handshake timed out. Parent did not respond or acknowledge correctly.'
+        );
+        cleanupHandshakeResources(); // Clean up timeout
+        // Still keep the general message listener in case parent responds late or for other messages,
+        // or decide to remove it if handshake is strictly required to proceed.
+        // document.body.innerHTML = `<p style="color:red;">Error: Could not establish initial communication with the parent application (handshake timeout).</p>`;
+      }
+    }, COMMUNICATION_TIMEOUT_MS);
   } else {
-    console.error("Live Editor: Application key is missing. Please add the 'data-app-key' attribute to the script tag.");
+    console.log(
+      'CDN Script: Not running inside an iframe, or parent is not accessible. Skipping parent communication setup.'
+    );
   }
 })();
