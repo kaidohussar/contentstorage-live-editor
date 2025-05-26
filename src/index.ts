@@ -1,4 +1,13 @@
-import { COMMUNICATION_TIMEOUT_MS, MESSAGE_TYPES } from './contants';
+import {
+  COMMUNICATION_TIMEOUT_MS,
+  MESSAGE_TYPES,
+  MessageType,
+} from './contants';
+import { setAndApplyInitialConfig, setConfig } from './helpers/config';
+import {
+  mutationObserverCallback,
+  mutationObserverConfig,
+} from './helpers/mutationObserver';
 
 (function () {
   const currentScript = document.currentScript as HTMLScriptElement;
@@ -38,6 +47,9 @@ import { COMMUNICATION_TIMEOUT_MS, MESSAGE_TYPES } from './contants';
       'CDN Script: Running inside an iframe. Setting up communication with parent and initiating handshake.'
     );
 
+    // Create an observer instance linked to the callback function
+    const observer = new MutationObserver(mutationObserverCallback);
+
     let handshakeSuccessful = false;
     let handshakeTimeoutId: number | undefined;
 
@@ -53,6 +65,18 @@ import { COMMUNICATION_TIMEOUT_MS, MESSAGE_TYPES } from './contants';
           if (!handshakeSuccessful) {
             // Process handshake ack only once
             handshakeSuccessful = true;
+
+            console.log(
+              'CDN Script: Received handshake acknowledgment from parent:',
+              event.data.payload
+            );
+
+            setAndApplyInitialConfig(event.data.payload.data.config);
+            console.log('Applied config:', event.data.payload);
+
+            console.log('Started observing DOM for mutations');
+            observer.observe(document.body, mutationObserverConfig);
+
             console.log(
               'CDN Script: Received handshake acknowledgment from parent:',
               event.data.payload
@@ -61,8 +85,7 @@ import { COMMUNICATION_TIMEOUT_MS, MESSAGE_TYPES } from './contants';
             console.log(
               'CDN Script: Parent communication handshake successful. Ready for further messages.'
             );
-            // Now you can set up listeners for other types of messages or enable functionality
-            // that depends on a successful handshake.
+            // Start
           }
         } else {
           // Handle other types of messages from the parent after handshake
@@ -71,6 +94,11 @@ import { COMMUNICATION_TIMEOUT_MS, MESSAGE_TYPES } from './contants';
               'CDN Script: Received further message from parent:',
               event.data
             );
+
+            if (event.data.type === MESSAGE_TYPES.SET_CONFIG) {
+              setConfig(event.data.payload);
+            }
+
             // Process other messages here
           } else {
             console.warn(
@@ -95,7 +123,7 @@ import { COMMUNICATION_TIMEOUT_MS, MESSAGE_TYPES } from './contants';
     window.addEventListener('message', messageFromParentHandler);
 
     // Initiate Handshake: Send handshake message to parent
-    const handshakeMessage = {
+    const handshakeMessage: { type: MessageType; payload: any } = {
       type: MESSAGE_TYPES.HANDSHAKE_INITIATE,
       payload: `Hello from iframe script (editor param: ${liveEditorParamValue}). Initiating handshake.`,
     };
