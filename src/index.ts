@@ -43,9 +43,7 @@ import { COMMUNICATION_TIMEOUT_MS, MESSAGE_TYPES } from './contants';
 
     // Handler for messages from the parent
     const messageFromParentHandler = (event: MessageEvent) => {
-      // IMPORTANT SECURITY NOTE:
-      // Always validate event.origin to ensure messages are coming from the expected parent domain.
-      // For example: if (event.origin !== "https://your-parent-app.com") {
+      // if (event.origin !== IFRAME_PARENT_ORIGIN) {
       //   console.warn("CDN Script: Received message from unexpected origin:", event.origin);
       //   return;
       // }
