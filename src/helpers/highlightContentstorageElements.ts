@@ -12,15 +12,18 @@ export const highlightContentstorageElements = () => {
     if (contentStorageId) {
       element.style.outline = `1px solid #1791FF`;
       element.style.position = 'relative'; // Needed for absolute positioning of the label
+      element.style.borderRadius = element.style.borderRadius
+        ? element.style.borderRadius
+        : '4px';
 
       // 5. Create and style the label for the top-left corner.
       const label = document.createElement('div');
       label.setAttribute('id', 'contentstorage-element-label');
       label.textContent = contentStorageId;
       label.style.position = 'absolute';
-      label.style.top = '0';
-      label.style.left = '0';
-      label.style.color = 'white';
+      label.style.top = '-17px';
+      label.style.left = '0px';
+      label.style.color = '#1791FF';
       label.style.padding = '2px 4px';
       label.style.fontSize = '10px';
       label.style.zIndex = '9999'; // Ensure it's on top
