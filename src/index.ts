@@ -1,13 +1,14 @@
 import {
   COMMUNICATION_TIMEOUT_MS,
-  MESSAGE_TYPES,
-  MessageType,
+  INCOMING_MESSAGE_TYPES,
+  OUTGOING_MESSAGE_TYPES,
 } from './contants';
 import { setAndApplyInitialConfig, setConfig } from './helpers/config';
 import {
   mutationObserverCallback,
   mutationObserverConfig,
 } from './helpers/mutationObserver';
+import { sendMessageToParent } from './helpers/sendMessageToParent';
 
 (function () {
   const currentScript = document.currentScript as HTMLScriptElement;
@@ -61,7 +62,7 @@ import {
       // }
 
       if (event.source === window.parent && event.data) {
-        if (event.data.type === MESSAGE_TYPES.HANDSHAKE_ACKNOWLEDGE) {
+        if (event.data.type === INCOMING_MESSAGE_TYPES.HANDSHAKE_ACKNOWLEDGE) {
           if (!handshakeSuccessful) {
             // Process handshake ack only once
             handshakeSuccessful = true;
@@ -95,7 +96,7 @@ import {
               event.data
             );
 
-            if (event.data.type === MESSAGE_TYPES.SET_CONFIG) {
+            if (event.data.type === INCOMING_MESSAGE_TYPES.SET_CONFIG) {
               setConfig(event.data.payload);
             }
 
@@ -122,20 +123,10 @@ import {
     // Add listener for parent's response (for handshake and subsequent messages)
     window.addEventListener('message', messageFromParentHandler);
 
-    // Initiate Handshake: Send handshake message to parent
-    const handshakeMessage: { type: MessageType; payload: any } = {
-      type: MESSAGE_TYPES.HANDSHAKE_INITIATE,
-      payload: `Hello from iframe script (editor param: ${liveEditorParamValue}). Initiating handshake.`,
-    };
-
-    // Post message to the parent window.
-    // IMPORTANT SECURITY NOTE:
-    // Replace "*" with the specific target origin of the parent application for enhanced security.
-    console.log(
-      'CDN Script: Sending handshake message to parent:',
-      handshakeMessage
+    sendMessageToParent(
+      OUTGOING_MESSAGE_TYPES.HANDSHAKE_INITIATE,
+      `Hello from iframe script (editor param: ${liveEditorParamValue}). Initiating handshake.`
     );
-    window.parent.postMessage(handshakeMessage, '*');
 
     // Timeout for the initial handshake
     handshakeTimeoutId = window.setTimeout(() => {

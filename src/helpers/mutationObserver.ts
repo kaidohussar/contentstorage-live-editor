@@ -18,17 +18,17 @@ export const mutationObserverCallback: MutationCallback = (
         STYLE_RELATED_ATTRIBUTES.includes(mutation.attributeName)
       ) {
         const targetElement = mutation.target as HTMLElement;
-        if (targetElement.hasAttribute('data-contentstorage-id')) {
-          // This is a style/class change on an element that HAS 'data-contentstorage-id'.
+        if (targetElement.hasAttribute('data-content-key')) {
+          // This is a style/class change on an element that HAS 'data-content-key'.
           // As per your rule, this is potentially significant (if it's an external change).
           // The disconnect/reconnect mechanism will prevent loops from applyConfig's own style changes.
         } else {
-          // Style change on an element WITHOUT 'data-contentstorage-id'. Ignore.
-          // console.log(`MutationObserver: Ignoring style/class attribute change on element WITHOUT 'data-contentstorage-id'`, targetElement);
+          // Style change on an element WITHOUT 'data-content-key'. Ignore.
+          // console.log(`MutationObserver: Ignoring style/class attribute change on element WITHOUT 'data-content-key'`, targetElement);
           continue;
         }
       }
-      // Other attribute changes (like 'data-contentstorage-id' itself, or attributes
+      // Other attribute changes (like 'data-content-key' itself, or attributes
       // set by applyConfig like 'data-highlighted-by-script') will pass this block
       // and be evaluated by the ID check below or become significant.
     }
@@ -105,6 +105,6 @@ export const mutationObserverCallback: MutationCallback = (
 export const mutationObserverConfig: MutationObserverInit = {
   childList: true,
   subtree: true,
-  attributes: true, // Important if data-contentstorage-id can be added/removed from existing elements
-  attributeFilter: ['data-contentstorage-id'], // More efficient if only observing this specific attribute change
+  attributes: true, // Important if data-content-key can be added/removed from existing elements
+  attributeFilter: ['data-content-key'], // More efficient if only observing this specific attribute change
 };
