@@ -1,4 +1,7 @@
 import { applyConfig } from './config';
+import { getContentElementKeys } from './contentElements';
+import { sendMessageToParent } from './sendMessageToParent';
+import { OUTGOING_MESSAGE_TYPES } from '../contants';
 
 export const mutationObserverCallback: MutationCallback = (
   mutationsList,
@@ -11,6 +14,7 @@ export const mutationObserverCallback: MutationCallback = (
   const STYLE_RELATED_ATTRIBUTES: string[] = ['style', 'class'];
 
   for (const mutation of mutationsList) {
+    console.log('mutation', mutation);
     // A. Attribute change filtering logic
     if (mutation.type === 'attributes') {
       if (
@@ -83,6 +87,11 @@ export const mutationObserverCallback: MutationCallback = (
 
     try {
       applyConfig(); // Call your DOM manipulation function
+      const contentElementKeys = getContentElementKeys();
+      sendMessageToParent(
+        OUTGOING_MESSAGE_TYPES.VISIBLE_CONTENT_KEYS,
+        contentElementKeys
+      );
     } catch (error) {
       console.error('Error during applyConfig:', error);
       // Optionally, handle the error further
