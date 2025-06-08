@@ -2,6 +2,7 @@ import { applyConfig } from './config';
 import { getContentElementKeys } from './contentElements';
 import { sendMessageToParent } from './sendMessageToParent';
 import { OUTGOING_MESSAGE_TYPES } from '../contants';
+import { findTextNodesInPage } from './domTreeWalker';
 
 export const mutationObserverCallback: MutationCallback = (
   mutationsList,
@@ -87,11 +88,8 @@ export const mutationObserverCallback: MutationCallback = (
 
     try {
       applyConfig(); // Call your DOM manipulation function
-      const contentElementKeys = getContentElementKeys();
-      sendMessageToParent(
-        OUTGOING_MESSAGE_TYPES.VISIBLE_CONTENT_KEYS,
-        contentElementKeys
-      );
+      const textNodes = findTextNodesInPage();
+      sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_TEXT_NODES, textNodes);
     } catch (error) {
       console.error('Error during applyConfig:', error);
       // Optionally, handle the error further

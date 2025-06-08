@@ -9,7 +9,7 @@ export const INCOMING_MESSAGE_TYPES = {
 export const OUTGOING_MESSAGE_TYPES = {
   HANDSHAKE_INITIATE: 'contentstorage-handshake-initiate',
   CLICK_CONTENT_ITEM_EDIT_BTN: 'contentstorage-click-item-edit-btn',
-  VISIBLE_CONTENT_KEYS: 'contentstorage-visible-content-keys',
+  FOUND_TEXT_NODES: 'contentstorage-found-text-nodes',
 } as const;
 
 export type MessagePayloadMap = {
@@ -17,7 +17,7 @@ export type MessagePayloadMap = {
   [OUTGOING_MESSAGE_TYPES.CLICK_CONTENT_ITEM_EDIT_BTN]: {
     contentKey: string;
   };
-  [OUTGOING_MESSAGE_TYPES.VISIBLE_CONTENT_KEYS]: string[];
+  [OUTGOING_MESSAGE_TYPES.FOUND_TEXT_NODES]: Text[];
 };
 
 export const COMMUNICATION_TIMEOUT_MS = 5000; // 5 seconds
