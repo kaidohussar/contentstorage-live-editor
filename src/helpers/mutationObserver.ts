@@ -1,5 +1,4 @@
 import { applyConfig } from './config';
-import { getContentElementKeys } from './contentElements';
 import { sendMessageToParent } from './sendMessageToParent';
 import { OUTGOING_MESSAGE_TYPES } from '../contants';
 import { findTextNodesInPage } from './domTreeWalker';
@@ -80,7 +79,7 @@ export const mutationObserverCallback: MutationCallback = (
     // console.log('MutationObserver: Significant mutation detected.', mutation);
     break; // One significant mutation is enough to trigger the action.
   }
-
+  console.log('significantMutationDetected', significantMutationDetected);
   if (significantMutationDetected) {
     // console.log('DOM mutated, re-highlighting...');
 
