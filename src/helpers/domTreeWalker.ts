@@ -1,15 +1,12 @@
 import { isElementVisible } from './isElementVisible';
 
-export const findTextNodesInPage = (): Text[] => {
+export const findTextNodesInPage = (): string[] => {
   /**
    * Enable check for ContentEditable elements only if there are ContentEditable elements on page,
    * otherwise this check will unnecessarily loop through a lot of DOM elements potentially causing performance issues
    */
   let checkForEditableElementsEnabled = false;
-
-  const nodeTextContainsNumber = (node: Node): boolean =>
-    !!node.textContent && /\d/.test(node.textContent);
-
+  
   const elementUnsupported = (element: HTMLElement): boolean =>
     element instanceof HTMLScriptElement ||
     element instanceof HTMLStyleElement ||
@@ -40,8 +37,8 @@ export const findTextNodesInPage = (): Text[] => {
       return NodeFilter.FILTER_SKIP;
     }
 
-    // Skip the node if it doesn't contain any numbers at all
-    if (!nodeTextContainsNumber(textNode)) {
+    // Skip if the text node only contains whitespace
+    if (data.trim().length === 0) {
       return NodeFilter.FILTER_SKIP;
     }
 
@@ -74,8 +71,8 @@ export const findTextNodesInPage = (): Text[] => {
     return NodeFilter.FILTER_ACCEPT;
   };
 
-  const getTextNodes = (): Text[] => {
-    const textNodes: Text[] = [];
+  const getTextNodes = (): string[] => {
+    const textNodes: string[] = [];
 
     const treeWalker = document.createTreeWalker(
       document.body,
@@ -86,7 +83,8 @@ export const findTextNodesInPage = (): Text[] => {
     );
 
     while (treeWalker.nextNode()) {
-      textNodes.push(treeWalker.currentNode as Text);
+      const currentNode = treeWalker.currentNode as Text;
+      textNodes.push(currentNode.data);
     }
 
     return textNodes;

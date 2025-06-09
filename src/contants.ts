@@ -17,7 +17,7 @@ export type MessagePayloadMap = {
   [OUTGOING_MESSAGE_TYPES.CLICK_CONTENT_ITEM_EDIT_BTN]: {
     contentKey: string;
   };
-  [OUTGOING_MESSAGE_TYPES.FOUND_TEXT_NODES]: Text[];
+  [OUTGOING_MESSAGE_TYPES.FOUND_TEXT_NODES]: string[];
 };
 
 export const COMMUNICATION_TIMEOUT_MS = 5000; // 5 seconds
