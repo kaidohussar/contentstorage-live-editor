@@ -1,9 +1,11 @@
 import {
   COMMUNICATION_TIMEOUT_MS,
   INCOMING_MESSAGE_TYPES,
+  IncomingMessagePayloadMap,
   OUTGOING_MESSAGE_TYPES,
 } from './contants';
-import { setAndApplyInitialConfig, setConfig } from './helpers/config';
+import { getConfig, setAndApplyInitialConfig, setConfig } from './helpers/config';
+import { highlightContentstorageElements } from './helpers/highlightContentstorageElements';
 import {
   mutationObserverCallback,
   mutationObserverConfig,
@@ -97,7 +99,17 @@ import { sendMessageToParent } from './helpers/sendMessageToParent';
             );
 
             if (event.data.type === INCOMING_MESSAGE_TYPES.SET_CONFIG) {
-              setConfig(event.data.payload);
+              setConfig(event.data.payload.data);
+            }
+
+            if (event.data.type === INCOMING_MESSAGE_TYPES.SET_TEXT_VALUES) {
+              const payload = event.data.payload.data as IncomingMessagePayloadMap["contentstorage-set-text-values"];
+              const shouldHighlight = getConfig().highlightEditableContent;
+              console.log('shouldHighlight', shouldHighlight);
+              if (shouldHighlight) {
+                highlightContentstorageElements(payload);
+              }
+              console.log("CDN Script: Received text values from parent:", payload);
             }
 
             // Process other messages here

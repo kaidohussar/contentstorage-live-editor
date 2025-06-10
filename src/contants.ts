@@ -4,6 +4,7 @@ export type OutgoingMessageType =
 export const INCOMING_MESSAGE_TYPES = {
   HANDSHAKE_ACKNOWLEDGE: 'parent-handshake-acknowledge',
   SET_CONFIG: 'contentstorage-set-config',
+  SET_TEXT_VALUES: "contentstorage-set-text-values",
 } as const;
 
 export const OUTGOING_MESSAGE_TYPES = {
@@ -18,6 +19,10 @@ export type MessagePayloadMap = {
     contentKey: string;
   };
   [OUTGOING_MESSAGE_TYPES.FOUND_TEXT_NODES]: string[];
+};
+
+export type IncomingMessagePayloadMap = {
+  [INCOMING_MESSAGE_TYPES.SET_TEXT_VALUES]: { text: string; contentKey: string }[];
 };
 
 export const COMMUNICATION_TIMEOUT_MS = 5000; // 5 seconds

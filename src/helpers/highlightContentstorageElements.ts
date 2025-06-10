@@ -1,6 +1,8 @@
 import { sendMessageToParent } from './sendMessageToParent';
 import { OUTGOING_MESSAGE_TYPES } from '../contants';
 
+let isProcessing = false;
+
 const editButton = (contentId: string) => {
   // Create the button element
   const button = document.createElement('button');
@@ -54,36 +56,76 @@ const editButton = (contentId: string) => {
   return button;
 };
 
-export const highlightContentstorageElements = () => {
-  // 1. Find all elements with the 'data-content-key' attribute.
-  const elements = document.querySelectorAll<HTMLElement>('[data-content-key]');
-  console.log('ELEMENTS', elements);
-  // 2. Iterate over the found elements.
-  elements.forEach((element) => {
-    // 3. Get the value of the 'data-content-key' attribute.
-    const contentStorageId = element.dataset.contentKey;
-
-    if (contentStorageId) {
-      element.style.outline = `1px solid #1791FF`;
-      element.style.position = 'relative'; // Needed for absolute positioning of the label
-
-      // 5. Create and style the label for the top-left corner.
-      const label = document.createElement('div');
-      label.setAttribute('id', 'contentstorage-element-label');
-      label.textContent = contentStorageId;
-      label.style.position = 'absolute';
-      label.style.top = '-15px';
-      label.style.left = '0px';
-      label.style.color = '#1791FF';
-      label.style.fontSize = '10px';
-      label.style.zIndex = '9999'; // Ensure it's on top
-      label.style.pointerEvents = 'none'; // So it doesn't interfere with clicks on the element
-
-      const button = editButton(contentStorageId);
-
-      // 6. Append the label to the element.
-      element.appendChild(label);
-      element.appendChild(button);
+const wrapTextInSpan = (node: Node, contentKey: string): void => {
+  if (node.nodeType === Node.TEXT_NODE && node.textContent) {
+    // Check if this text is already wrapped in a span with this content key
+    const parent = node.parentElement;
+    if (parent?.hasAttribute('data-content-key') && parent.getAttribute('data-content-key') === contentKey) {
+      return; // Skip if already wrapped with this content key
     }
-  });
+
+    const span = document.createElement('span');
+    span.setAttribute('data-content-key', contentKey);
+    span.textContent = node.textContent;
+    node.parentNode?.replaceChild(span, node);
+  }
+};
+
+const findAndWrapText = (element: Node, content: { text: string; contentKey: string }[]): void => {
+  if (element.nodeType === Node.TEXT_NODE && element.textContent) {
+    for (const item of content) {
+      if (element.textContent.includes(item.text)) {
+        wrapTextInSpan(element, item.contentKey);
+        return;
+      }
+    }
+  }
+
+  // Recursively process child nodes
+  const childNodes = Array.from(element.childNodes);
+  for (const child of childNodes) {
+    findAndWrapText(child, content);
+  }
+};
+
+export const highlightContentstorageElements = (content?: { text: string; contentKey: string }[]) => {
+  if (isProcessing) return;
+  isProcessing = true;
+
+  try {
+    // First, find and wrap matching text in spans with data-content-key
+    if (content && content?.length > 0) {
+      findAndWrapText(document.body, content);
+    }
+
+    // Then highlight all elements with data-content-key
+    const elements = document.querySelectorAll<HTMLElement>('[data-content-key]');
+    
+    elements.forEach((element) => {
+      const contentStorageId = element.dataset.contentKey;
+
+      if (contentStorageId) {
+        element.style.outline = `1px solid #1791FF`;
+        element.style.position = 'relative';
+
+        const label = document.createElement('div');
+        label.setAttribute('id', 'contentstorage-element-label');
+        label.textContent = contentStorageId;
+        label.style.position = 'absolute';
+        label.style.top = '-15px';
+        label.style.left = '0px';
+        label.style.color = '#1791FF';
+        label.style.fontSize = '10px';
+        label.style.zIndex = '9999';
+        label.style.pointerEvents = 'none';
+
+        const button = editButton(contentStorageId);
+
+        element.appendChild(label);
+        element.appendChild(button);
+      }
+    });
+  } finally {
+    isProcessing = false;
+  }
 };
