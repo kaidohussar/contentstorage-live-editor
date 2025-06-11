@@ -10,55 +10,58 @@ export const mutationObserverCallback: MutationCallback = (
   let significantMutationDetected = false;
 
   const ACTUAL_OBSERVED_TARGET_NODE: Node = document.body;
-  const IGNORED_ELEMENT_IDS: string[] = ['contentstorage-element-label']; // IDs of elements whose mutations should be ignored
+  // IDs of container elements whose mutations should be completely ignored.
+  const IGNORED_ELEMENT_IDS: string[] = ['contentstorage-element-label'];
   const STYLE_RELATED_ATTRIBUTES: string[] = ['style', 'class'];
 
   for (const mutation of mutationsList) {
-    // Skip mutations that are part of our own highlighting process
-    if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-      const addedNode = mutation.addedNodes[0] as HTMLElement;
-      if (addedNode.hasAttribute && addedNode.hasAttribute('data-content-key')) {
-        continue; // Skip mutations that add our own highlighted elements
+    // --- PRIMARY LOOP FIX ---
+    // If the mutation is a childList change, we first check if it was caused by our own script
+    // adding a 'data-content-key' span. If so, we ignore this entire mutation record
+    // because the addition of our span and the removal of the original text node are
+    // part of the same internal operation.
+    if (mutation.type === 'childList') {
+      let isInternalWrappingMutation = false;
+      for (const addedNode of Array.from(mutation.addedNodes)) {
+        // Check if the added node is an element and has our specific data attribute.
+        if (
+          addedNode.nodeType === Node.ELEMENT_NODE &&
+          (addedNode as HTMLElement).hasAttribute('data-content-key')
+        ) {
+          isInternalWrappingMutation = true;
+          break; // Found our wrapper, no need to check other added nodes.
+        }
+      }
+      if (isInternalWrappingMutation) {
+        continue; // This is our own change, skip to the next mutation record.
       }
     }
 
     // A. Attribute change filtering logic
     if (mutation.type === 'attributes') {
-      if (
-        mutation.attributeName &&
-        STYLE_RELATED_ATTRIBUTES.includes(mutation.attributeName)
-      ) {
+      // Ignore style or class changes on elements that we haven't already marked.
+      // This prevents loops if external scripts are changing styles on generic elements,
+      // while still allowing us to detect style changes on our specifically marked elements.
+      if (STYLE_RELATED_ATTRIBUTES.includes(mutation.attributeName || '')) {
         const targetElement = mutation.target as HTMLElement;
-        if (targetElement.hasAttribute('data-content-key')) {
-          // This is a style/class change on an element that HAS 'data-content-key'.
-          // As per your rule, this is potentially significant (if it's an external change).
-          // The disconnect/reconnect mechanism will prevent loops from applyConfig's own style changes.
-        } else {
-          // Style change on an element WITHOUT 'data-content-key'. Ignore.
-          continue;
+        if (!targetElement.hasAttribute('data-content-key')) {
+          continue; // Style change on a non-target element, ignore.
         }
       }
     }
 
     // B. Ignore mutations if their target is within an element with an ignored ID
-    let nodeToCheckIdPath: Node | null = null;
-
-    // Determine the primary node whose ancestry we need to check for ignored IDs
-    if (
-      mutation.type === 'childList' ||
-      mutation.type === 'attributes' ||
-      mutation.type === 'characterData'
-    ) {
-      nodeToCheckIdPath = mutation.target;
-    }
+    const nodeToCheckIdPath: Node | null = mutation.target;
 
     if (nodeToCheckIdPath) {
       let isInsideIgnoredElement = false;
+      // Start from the element itself or its parent if it's a text node.
       let currentElement: HTMLElement | null =
         nodeToCheckIdPath.nodeType === Node.ELEMENT_NODE
           ? (nodeToCheckIdPath as HTMLElement)
           : nodeToCheckIdPath.parentElement;
 
+      // Walk up the DOM tree to see if any parent has an ignored ID.
       while (currentElement) {
         if (
           currentElement.id &&
@@ -71,32 +74,42 @@ export const mutationObserverCallback: MutationCallback = (
       }
 
       if (isInsideIgnoredElement) {
-        continue; // Skip this mutation, it's within an explicitly ignored zone
+        continue; // Skip this mutation, it's within an explicitly ignored zone.
       }
     }
 
-    // If we reach here, the mutation is considered significant by the current rules.
+    // If a mutation passes all the filters above, we consider it significant.
     significantMutationDetected = true;
-    break; // One significant mutation is enough to trigger the action.
+    break; // One significant mutation is enough to trigger our actions.
   }
 
+  // If a significant, external mutation was detected, run our processing logic.
   if (significantMutationDetected) {
-    observer.disconnect(); // Disconnect the observer
+    // IMPORTANT: Disconnect the observer to prevent it from observing the changes we are about to make.
+    observer.disconnect();
 
     try {
-      applyConfig(); // Call your DOM manipulation function
+      applyConfig();
       const textNodes = findTextNodesInPage();
-      sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_TEXT_NODES, textNodes);
+      sendMessageToParent(
+        OUTGOING_MESSAGE_TYPES.FOUND_TEXT_NODES,
+        textNodes.map((node) => node.textContent || '')
+      );
+      console.log(
+        'Significant mutation detected. Would run applyConfig() now.'
+      );
     } catch (error) {
-      console.error('Error during applyConfig:', error);
+      console.error('Error during DOM processing after mutation:', error);
     } finally {
-      // Reconnect the observer after DOM manipulations are done
+      // After our work is done, reconnect the observer.
+      // Using Promise.resolve().then() ensures this happens in a separate microtask,
+      // allowing the DOM to settle before we start observing again.
       Promise.resolve()
         .then(() => {
           observer.observe(ACTUAL_OBSERVED_TARGET_NODE, mutationObserverConfig);
         })
         .catch((promiseError) => {
-          console.error('Error re-observing after applyConfig:', promiseError);
+          console.error('Error re-observing target node:', promiseError);
         });
     }
   }
