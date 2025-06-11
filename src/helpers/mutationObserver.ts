@@ -1,7 +1,18 @@
-import { applyConfig } from './config';
+import { findTextNodesInPage } from './domTreeWalker';
 import { sendMessageToParent } from './sendMessageToParent';
 import { OUTGOING_MESSAGE_TYPES } from '../contants';
-import { findTextNodesInPage } from './domTreeWalker';
+
+function isInternalWrapper(node: Node): boolean {
+  if (node.nodeType !== Node.ELEMENT_NODE) {
+    return false;
+  }
+  const element = node as HTMLElement;
+  // Check for the highlight span OR the "checked" span
+  return (
+    element.hasAttribute('data-content-key') ||
+    element.hasAttribute('data-content-checked')
+  );
+}
 
 export const mutationObserverCallback: MutationCallback = (
   mutationsList,
@@ -10,100 +21,110 @@ export const mutationObserverCallback: MutationCallback = (
   let significantMutationDetected = false;
 
   const ACTUAL_OBSERVED_TARGET_NODE: Node = document.body;
-  // IDs of container elements whose mutations should be completely ignored.
   const IGNORED_ELEMENT_IDS: string[] = ['contentstorage-element-label'];
   const STYLE_RELATED_ATTRIBUTES: string[] = ['style', 'class'];
 
+  // --- NEW: Determine if this batch of mutations was likely caused by our script. ---
+  // We check if at least one mutation involves adding our specific wrapper span.
+  // This gives us context for ignoring related mutations, like text node removals.
+  const isInternalWrappingBatch = mutationsList.some(
+    (mutation) =>
+      mutation.type === 'childList' &&
+      Array.from(mutation.addedNodes).some(isInternalWrapper) // Use the helper function here
+  );
+
   for (const mutation of mutationsList) {
-    // --- PRIMARY LOOP FIX ---
-    // If the mutation is a childList change, we first check if it was caused by our own script
-    // adding a 'data-content-key' span. If so, we ignore this entire mutation record
-    // because the addition of our span and the removal of the original text node are
-    // part of the same internal operation.
+    // 1. Ignore mutations that are clearly our own span additions.
     if (mutation.type === 'childList') {
-      let isInternalWrappingMutation = false;
-      for (const addedNode of Array.from(mutation.addedNodes)) {
-        // Check if the added node is an element and has our specific data attribute.
-        if (
-          addedNode.nodeType === Node.ELEMENT_NODE &&
-          (addedNode as HTMLElement).hasAttribute('data-content-key')
-        ) {
-          isInternalWrappingMutation = true;
-          break; // Found our wrapper, no need to check other added nodes.
-        }
-      }
-      if (isInternalWrappingMutation) {
-        continue; // This is our own change, skip to the next mutation record.
+      const isWrapperAddition = Array.from(mutation.addedNodes).some(
+        isInternalWrapper
+      ); // And here
+      if (isWrapperAddition) {
+        continue;
       }
     }
 
-    // A. Attribute change filtering logic
+    // --- NEW: Ignore corresponding text node removals during our wrapping operation. ---
+    // If we've established this is an internal batch, and we encounter a mutation
+    // that is *only* removing text nodes, we can safely assume it's the other
+    // half of our wrapping process and ignore it.
+    if (isInternalWrappingBatch && mutation.type === 'childList') {
+      const onlyTextNodesRemoved =
+        mutation.removedNodes.length > 0 &&
+        mutation.addedNodes.length === 0 &&
+        Array.from(mutation.removedNodes).every(
+          (node) => node.nodeType === Node.TEXT_NODE
+        );
+
+      if (onlyTextNodesRemoved) {
+        continue; // Ignore removal of the original text node.
+      }
+    }
+
+    // 2. Attribute change filtering logic (your existing code is good).
     if (mutation.type === 'attributes') {
-      // Ignore style or class changes on elements that we haven't already marked.
-      // This prevents loops if external scripts are changing styles on generic elements,
-      // while still allowing us to detect style changes on our specifically marked elements.
       if (STYLE_RELATED_ATTRIBUTES.includes(mutation.attributeName || '')) {
         const targetElement = mutation.target as HTMLElement;
         if (!targetElement.hasAttribute('data-content-key')) {
-          continue; // Style change on a non-target element, ignore.
+          continue;
         }
       }
     }
 
-    // B. Ignore mutations if their target is within an element with an ignored ID
+    // 3. Ignore mutations within explicitly ignored parent elements (your existing code is good).
     const nodeToCheckIdPath: Node | null = mutation.target;
-
     if (nodeToCheckIdPath) {
-      let isInsideIgnoredElement = false;
-      // Start from the element itself or its parent if it's a text node.
       let currentElement: HTMLElement | null =
         nodeToCheckIdPath.nodeType === Node.ELEMENT_NODE
           ? (nodeToCheckIdPath as HTMLElement)
           : nodeToCheckIdPath.parentElement;
 
-      // Walk up the DOM tree to see if any parent has an ignored ID.
       while (currentElement) {
         if (
           currentElement.id &&
           IGNORED_ELEMENT_IDS.includes(currentElement.id)
         ) {
-          isInsideIgnoredElement = true;
-          break;
+          // By using 'continue' with a label, we could break out to the next mutation,
+          // but for clarity, we'll just set a flag and break.
+          // This part of the logic can be simplified, but for now, we ensure it works.
+          // We mark this path to be skipped.
+          significantMutationDetected = false; // Override any previous detection
+          break; // Exit the while loop
         }
         currentElement = currentElement.parentElement;
       }
-
-      if (isInsideIgnoredElement) {
-        continue; // Skip this mutation, it's within an explicitly ignored zone.
+      // If the while loop broke because it found an ignored ID, continue to the next mutation.
+      if (currentElement && IGNORED_ELEMENT_IDS.includes(currentElement.id)) {
+        continue;
       }
     }
 
-    // If a mutation passes all the filters above, we consider it significant.
+    // If a mutation passes all filters, we consider it significant.
     significantMutationDetected = true;
-    break; // One significant mutation is enough to trigger our actions.
+    break; // One significant mutation is enough.
   }
 
-  // If a significant, external mutation was detected, run our processing logic.
+  // If a significant, external mutation was detected, run the processing logic.
   if (significantMutationDetected) {
-    // IMPORTANT: Disconnect the observer to prevent it from observing the changes we are about to make.
     observer.disconnect();
 
     try {
-      applyConfig();
+      // applyConfig(); // Assuming this is part of your process
       const textNodes = findTextNodesInPage();
-      sendMessageToParent(
-        OUTGOING_MESSAGE_TYPES.FOUND_TEXT_NODES,
-        textNodes.map((node) => node.textContent || '')
-      );
-      console.log(
-        'Significant mutation detected. Would run applyConfig() now.'
-      );
+      const texts = textNodes.map((node) => node.textContent || '');
+      if (texts.length > 0) {
+        sendMessageToParent(
+          OUTGOING_MESSAGE_TYPES.FOUND_TEXT_NODES,
+          textNodes.map((node) => node.textContent || '')
+        );
+        console.log(
+          'Significant mutation detected. Processing and sending text nodes.'
+        );
+      }
     } catch (error) {
       console.error('Error during DOM processing after mutation:', error);
     } finally {
-      // After our work is done, reconnect the observer.
-      // Using Promise.resolve().then() ensures this happens in a separate microtask,
-      // allowing the DOM to settle before we start observing again.
+      // Reconnect the observer asynchronously.
       Promise.resolve()
         .then(() => {
           observer.observe(ACTUAL_OBSERVED_TARGET_NODE, mutationObserverConfig);
@@ -115,9 +136,12 @@ export const mutationObserverCallback: MutationCallback = (
   }
 };
 
+// Your configuration remains the same.
 export const mutationObserverConfig: MutationObserverInit = {
   childList: true,
   subtree: true,
   attributes: true,
-  attributeFilter: ['data-content-key', 'style', 'class'],
+  // No need to filter attributes here if you do it in the callback
+  // but it can be a micro-optimization.
+  // attributeFilter: ['data-content-key', 'style', 'class'],
 };

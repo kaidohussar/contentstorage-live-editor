@@ -40,7 +40,10 @@ export const findTextNodesInPage = (): Node[] => {
 
         let currentAncestor: HTMLElement | null = parent;
         while (currentAncestor && currentAncestor !== document.body) {
-          if (currentAncestor.hasAttribute('data-content-key')) {
+          if (
+            currentAncestor.hasAttribute('data-content-key') ||
+            currentAncestor.hasAttribute('data-content-checked')
+          ) {
             return NodeFilter.FILTER_SKIP; // Skip this node entirely.
           }
           currentAncestor = currentAncestor.parentElement;

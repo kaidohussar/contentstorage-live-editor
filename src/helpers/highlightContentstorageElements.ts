@@ -56,12 +56,15 @@ const editButton = (contentId: string) => {
   return button;
 };
 
-const wrapTextInSpan = (node: Node, contentKey: string): void => {
+const wrapTextInContentKeyWrapper = (node: Node, contentKey: string): void => {
+  // This function is already correct.
   if (node.nodeType === Node.TEXT_NODE && node.textContent) {
-    // Check if this text is already wrapped in a span with this content key
     const parent = node.parentElement;
-    if (parent?.hasAttribute('data-content-key') && parent.getAttribute('data-content-key') === contentKey) {
-      return; // Skip if already wrapped with this content key
+    if (
+      parent?.hasAttribute('data-content-key') &&
+      parent.getAttribute('data-content-key') === contentKey
+    ) {
+      return;
     }
 
     const span = document.createElement('span');
@@ -71,24 +74,66 @@ const wrapTextInSpan = (node: Node, contentKey: string): void => {
   }
 };
 
-const findAndWrapText = (element: Node, content: { text: string; contentKey: string }[]): void => {
-  if (element.nodeType === Node.TEXT_NODE && element.textContent) {
-    for (const item of content) {
-      if (element.textContent.includes(item.text)) {
-        wrapTextInSpan(element, item.contentKey);
-        return;
-      }
+const wrapTextInCheckedTextWrapper = (node: Node): void => {
+  if (node.nodeType === Node.TEXT_NODE && node.textContent) {
+    const parent = node.parentElement;
+    if (parent?.hasAttribute('data-content-checked')) {
+      return;
+    }
+
+    const span = document.createElement('span');
+    // --- FIX: Corrected 'trie' to 'true' ---
+    span.setAttribute('data-content-checked', 'true');
+    span.textContent = node.textContent;
+    node.parentNode?.replaceChild(span, node);
+  }
+};
+
+const findAndWrapText = (
+  element: Node,
+  content: { text: string; contentKey: string }[]
+): void => {
+  // 1. If the current node is a text node, process it.
+  if (element.nodeType === Node.TEXT_NODE && element.textContent?.trim()) {
+    // Find if this text node's content matches any of the items to be highlighted.
+    const matchedItem = content.find((item) =>
+      element.textContent!.includes(item.text)
+    );
+
+    if (matchedItem) {
+      // If a match is found, wrap it in the highlight span.
+      wrapTextInContentKeyWrapper(element, matchedItem.contentKey);
+    } else {
+      // If no match is found, wrap it in the "checked" span.
+      wrapTextInCheckedTextWrapper(element);
+    }
+    // Once processed, we don't need to do anything else with this node.
+    return;
+  }
+
+  // 2. Do not recurse into elements we have already created.
+  if (element.nodeType === Node.ELEMENT_NODE) {
+    const el = element as HTMLElement;
+    if (
+      el.hasAttribute('data-content-key') ||
+      el.hasAttribute('data-content-checked')
+    ) {
+      return;
     }
   }
 
-  // Recursively process child nodes
+  // 3. If it's an element node, recursively call this function on its children.
+  // We must copy childNodes to an array because the original NodeList is "live"
+  // and will change when we replace nodes, which can break the loop.
   const childNodes = Array.from(element.childNodes);
   for (const child of childNodes) {
     findAndWrapText(child, content);
   }
 };
 
-export const highlightContentstorageElements = (content?: { text: string; contentKey: string }[]) => {
+export const highlightContentstorageElements = (
+  content?: { text: string; contentKey: string }[]
+) => {
   if (isProcessing) return;
   isProcessing = true;
 
@@ -99,8 +144,9 @@ export const highlightContentstorageElements = (content?: { text: string; conten
     }
 
     // Then highlight all elements with data-content-key
-    const elements = document.querySelectorAll<HTMLElement>('[data-content-key]');
-    
+    const elements =
+      document.querySelectorAll<HTMLElement>('[data-content-key]');
+
     elements.forEach((element) => {
       const contentStorageId = element.dataset.contentKey;
 
