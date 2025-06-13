@@ -113,10 +113,10 @@ export const mutationObserverCallback: MutationCallback = (
       const textNodes = findTextNodesInPage();
       const texts = textNodes.map((node) => node.textContent || '');
       if (texts.length > 0) {
-        sendMessageToParent(
-          OUTGOING_MESSAGE_TYPES.FOUND_TEXT_NODES,
-          textNodes.map((node) => node.textContent || '')
-        );
+        sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_TEXT_NODES, {
+          textNodes: textNodes.map((node) => node.textContent || ''),
+          contentKeyMap: window.memoryMap,
+        });
         console.log(
           'Significant mutation detected. Processing and sending text nodes.'
         );

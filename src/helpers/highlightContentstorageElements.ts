@@ -150,6 +150,14 @@ export const highlightContentstorageElements = (
     elements.forEach((element) => {
       const contentStorageId = element.dataset.contentKey;
 
+      if (!element.textContent) {
+        return;
+      }
+
+      if (window && !window.memoryMap.has(element.textContent)) {
+        return;
+      }
+
       if (contentStorageId) {
         element.style.outline = `1px solid #1791FF`;
         element.style.position = 'relative';
