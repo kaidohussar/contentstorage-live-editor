@@ -1,6 +1,8 @@
 import { findTextNodesInPage } from './domTreeWalker';
 import { sendMessageToParent } from './sendMessageToParent';
 import { OUTGOING_MESSAGE_TYPES } from '../contants';
+import { getConfig } from './config';
+import { highlightContentstorageElements } from './highlightContentstorageElements';
 
 function isInternalWrapper(node: Node): boolean {
   if (node.nodeType !== Node.ELEMENT_NODE) {
@@ -113,10 +115,34 @@ export const mutationObserverCallback: MutationCallback = (
       const textNodes = findTextNodesInPage();
       const texts = textNodes.map((node) => node.textContent || '');
       if (texts.length > 0) {
-        sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_TEXT_NODES, {
-          textNodes: textNodes.map((node) => node.textContent || ''),
-          contentKeyMap: window.memoryMap,
+        console.log('BEFORE SEND FOUND TEXT NODES', window.memoryMap);
+        const allContentNodes = textNodes.map((node) => {
+          const textContent = node.textContent || '';
+          const keys = Array.from(
+            window.memoryMap?.get(textContent)?.ids || []
+          );
+
+          return {
+            contentKey: keys,
+            type: 'text',
+            text: textContent,
+          };
         });
+
+        const contentNodesWithMatchedId = allContentNodes.filter(
+          (node) => node.contentKey.length > 0
+        );
+
+        sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
+          contentNodes: contentNodesWithMatchedId,
+        });
+
+        const shouldHighlight = getConfig().highlightEditableContent;
+        console.log('shouldHighlight', shouldHighlight);
+        if (shouldHighlight && contentNodesWithMatchedId?.length > 0) {
+          highlightContentstorageElements(contentNodesWithMatchedId);
+        }
+
         console.log(
           'Significant mutation detected. Processing and sending text nodes.'
         );

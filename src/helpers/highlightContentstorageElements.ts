@@ -1,5 +1,5 @@
 import { sendMessageToParent } from './sendMessageToParent';
-import { OUTGOING_MESSAGE_TYPES } from '../contants';
+import { ContentNode, OUTGOING_MESSAGE_TYPES } from '../contants';
 
 let isProcessing = false;
 
@@ -89,10 +89,7 @@ const wrapTextInCheckedTextWrapper = (node: Node): void => {
   }
 };
 
-const findAndWrapText = (
-  element: Node,
-  content: { text: string; contentKey: string }[]
-): void => {
+const findAndWrapText = (element: Node, content: ContentNode[]): void => {
   // 1. If the current node is a text node, process it.
   if (element.nodeType === Node.TEXT_NODE && element.textContent?.trim()) {
     // Find if this text node's content matches any of the items to be highlighted.
@@ -102,7 +99,7 @@ const findAndWrapText = (
 
     if (matchedItem) {
       // If a match is found, wrap it in the highlight span.
-      wrapTextInContentKeyWrapper(element, matchedItem.contentKey);
+      wrapTextInContentKeyWrapper(element, matchedItem.contentKey[0]);
     } else {
       // If no match is found, wrap it in the "checked" span.
       wrapTextInCheckedTextWrapper(element);
@@ -131,9 +128,7 @@ const findAndWrapText = (
   }
 };
 
-export const highlightContentstorageElements = (
-  content?: { text: string; contentKey: string }[]
-) => {
+export const highlightContentstorageElements = (content?: ContentNode[]) => {
   if (isProcessing) return;
   isProcessing = true;
 
