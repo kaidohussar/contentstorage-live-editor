@@ -6,6 +6,7 @@ let isProcessing = false;
 const editButton = (contentId: string) => {
   // Create the button element
   const button = document.createElement('button');
+  button.setAttribute('id', 'contentstorage-element-button');
   button.type = 'button'; // Good practice for buttons not submitting forms
 
   // Style the button directly using inline styles
@@ -128,7 +129,10 @@ const findAndWrapText = (element: Node, content: ContentNode[]): void => {
   }
 };
 
-export const highlightContentstorageElements = (content?: ContentNode[]) => {
+export const markContentStorageElements = (
+  content: ContentNode[],
+  shouldHighlight: boolean
+) => {
   if (isProcessing) return;
   isProcessing = true;
 
@@ -153,7 +157,7 @@ export const highlightContentstorageElements = (content?: ContentNode[]) => {
         return;
       }
 
-      if (contentStorageId) {
+      if (contentStorageId && shouldHighlight) {
         element.style.outline = `1px solid #1791FF`;
         element.style.position = 'relative';
 
@@ -177,4 +181,18 @@ export const highlightContentstorageElements = (content?: ContentNode[]) => {
   } finally {
     isProcessing = false;
   }
+};
+
+export const hideContentstorageElementsHighlight = () => {
+  const elements = document.querySelectorAll<HTMLElement>('[data-content-key]');
+  const labels = document.querySelectorAll<HTMLElement>(
+    '#contentstorage-element-label'
+  );
+  const buttons = document.querySelectorAll<HTMLElement>(
+    '#contentstorage-element-button'
+  );
+
+  elements.forEach((item) => (item.style = ''));
+
+  [...labels, ...buttons].forEach((item) => item.remove());
 };

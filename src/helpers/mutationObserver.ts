@@ -1,8 +1,8 @@
 import { findTextNodesInPage } from './domTreeWalker';
 import { sendMessageToParent } from './sendMessageToParent';
-import { OUTGOING_MESSAGE_TYPES } from '../contants';
+import { ContentNode, OUTGOING_MESSAGE_TYPES } from '../contants';
 import { getConfig } from './config';
-import { highlightContentstorageElements } from './highlightContentstorageElements';
+import { markContentStorageElements } from './markContentStorageElements';
 
 function isInternalWrapper(node: Node): boolean {
   if (node.nodeType !== Node.ELEMENT_NODE) {
@@ -129,7 +129,7 @@ export const mutationObserverCallback: MutationCallback = (
           };
         });
 
-        const contentNodesWithMatchedId = allContentNodes.filter(
+        const contentNodesWithMatchedId: ContentNode[] = allContentNodes.filter(
           (node) => node.contentKey.length > 0
         );
 
@@ -138,10 +138,10 @@ export const mutationObserverCallback: MutationCallback = (
         });
 
         const shouldHighlight = getConfig().highlightEditableContent;
-        console.log('shouldHighlight', shouldHighlight);
-        if (shouldHighlight && contentNodesWithMatchedId?.length > 0) {
-          highlightContentstorageElements(contentNodesWithMatchedId);
-        }
+        const highlight =
+          shouldHighlight === undefined ? true : shouldHighlight;
+
+        markContentStorageElements(contentNodesWithMatchedId, highlight);
 
         console.log(
           'Significant mutation detected. Processing and sending text nodes.'

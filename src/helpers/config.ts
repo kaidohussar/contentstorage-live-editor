@@ -1,4 +1,4 @@
-import { highlightContentstorageElements } from './highlightContentstorageElements';
+import { markContentStorageElements } from './markContentStorageElements';
 
 export type LiveEditorConfig = {
   highlightEditableContent?: boolean;
@@ -9,14 +9,14 @@ let config: LiveEditorConfig = {
 };
 
 export const setConfig = (newConfig: Partial<LiveEditorConfig>) => {
-  config = { ...newConfig };
+  config = { ...config, ...newConfig };
 };
 
 export const getConfig = () => config;
 
 export const applyConfig = () => {
   if (config.highlightEditableContent) {
-    highlightContentstorageElements();
+    markContentStorageElements([], true);
   }
 };
 
@@ -24,6 +24,6 @@ export const setAndApplyInitialConfig = (c: LiveEditorConfig) => {
   setConfig(c);
   console.log('INITIAL CONFIG', c);
   if (c.highlightEditableContent) {
-    highlightContentstorageElements();
+    markContentStorageElements([], true);
   }
 };

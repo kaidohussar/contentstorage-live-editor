@@ -1,15 +1,13 @@
 import {
   COMMUNICATION_TIMEOUT_MS,
   INCOMING_MESSAGE_TYPES,
-  IncomingMessagePayloadMap,
   OUTGOING_MESSAGE_TYPES,
 } from './contants';
+import { setAndApplyInitialConfig, setConfig } from './helpers/config';
 import {
-  getConfig,
-  setAndApplyInitialConfig,
-  setConfig,
-} from './helpers/config';
-import { highlightContentstorageElements } from './helpers/highlightContentstorageElements';
+  hideContentstorageElementsHighlight,
+  markContentStorageElements,
+} from './helpers/markContentStorageElements';
 import {
   mutationObserverCallback,
   mutationObserverConfig,
@@ -106,19 +104,20 @@ import { sendMessageToParent } from './helpers/sendMessageToParent';
               setConfig(event.data.payload.data);
             }
 
-            // if (event.data.type === INCOMING_MESSAGE_TYPES.SET_TEXT_VALUES) {
-            //   const payload = event.data.payload
-            //     .data as IncomingMessagePayloadMap['contentstorage-set-text-values'];
-            //   const shouldHighlight = getConfig().highlightEditableContent;
-            //   console.log('shouldHighlight', shouldHighlight);
-            //   if (shouldHighlight && payload?.length > 0) {
-            //     highlightContentstorageElements(payload);
-            //   }
-            //   console.log(
-            //     'CDN Script: Received text values from parent:',
-            //     payload
-            //   );
-            // }
+            if (
+              event.data.type === INCOMING_MESSAGE_TYPES.SET_HIGHLIGHT_CONTENT
+            ) {
+              setConfig({ highlightEditableContent: true });
+              markContentStorageElements([], true);
+            }
+
+            if (
+              event.data.type ===
+              INCOMING_MESSAGE_TYPES.SET_HIDE_HIGHLIGHT_CONTENT
+            ) {
+              setConfig({ highlightEditableContent: false });
+              hideContentstorageElementsHighlight();
+            }
 
             // Process other messages here
           } else {
