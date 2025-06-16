@@ -1,5 +1,6 @@
 import { sendMessageToParent } from './sendMessageToParent';
 import { ContentNode, OUTGOING_MESSAGE_TYPES } from '../contants';
+import { isImageElement } from './typeguards';
 
 let isProcessing = false;
 
@@ -192,15 +193,23 @@ export const markContentStorageElements = (
     // Then highlight all elements with data-content-key
     const elements =
       document.querySelectorAll<HTMLElement>('[data-content-key]');
-
+    console.log('elements', elements);
     elements.forEach((element) => {
       const contentStorageId = element.dataset.contentKey;
+      const isImg = isImageElement(element)
+      console.log('contentStorageId', contentStorageId);
 
-      if (!element.textContent) {
+      if (isImg && !element.src) {
         return;
       }
 
-      if (window && !window.memoryMap.has(element.textContent)) {
+      if (!isImg && !element.textContent) {
+        return;
+      }
+
+      const contentValue = isImg ? element.src : element.textContent;
+
+      if (window && !window.memoryMap.has(contentValue || '')) {
         return;
       }
 

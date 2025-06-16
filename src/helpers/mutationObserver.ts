@@ -140,11 +140,11 @@ export const mutationObserverCallback: MutationCallback = (
               const imgElement = node as HTMLImageElement;
 
               console.log('SRC', imgElement.src);
-
+              console.log('MEMORY', window.memoryMap);
               const keys = Array.from(
                 window.memoryMap?.get(imgElement.src)?.ids || []
               );
-
+              console.log('KEYS', keys);
               if (keys.length === 0) {
                 return null;
               }

@@ -12,7 +12,7 @@ const isEditableOrInsideEditable = (element: HTMLElement | null): boolean => {
 
 export const findContentNodesInPage = (): Node[] => {
   const textNodes: Node[] = [];
-
+  console.log('NOTES', textNodes);
   // Define unsupported tags.
   const isUnsupported = (element: HTMLElement): boolean =>
     element instanceof HTMLScriptElement ||
@@ -40,7 +40,7 @@ export const findContentNodesInPage = (): Node[] => {
           if (element.tagName !== 'IMG') {
             return NodeFilter.FILTER_SKIP; // We only care about IMG elements
           }
-
+          console.log('image element', element.hasAttribute('data-content-checked'));
           if (element.hasAttribute('data-content-checked')) {
             return NodeFilter.FILTER_REJECT; // Skip this IMG element.
           }
@@ -102,6 +102,6 @@ export const findContentNodesInPage = (): Node[] => {
   while ((currentNode = treeWalker.nextNode())) {
     textNodes.push(currentNode);
   }
-
+  console.log('ALLAALALALALAL', textNodes);
   return textNodes;
 };
