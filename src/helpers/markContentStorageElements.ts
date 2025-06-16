@@ -57,14 +57,12 @@ const editButton = (contentId: string) => {
   return button;
 };
 
-const wrapTextInContentKeyWrapper = (node: Node, contentKey: string): void => {
-  // This function is already correct.
+const applyContentKey = (node: Node, contentKey: string): void => {
+  // Handle Text Nodes by wrapping them
   if (node.nodeType === Node.TEXT_NODE && node.textContent) {
     const parent = node.parentElement;
-    if (
-      parent?.hasAttribute('data-content-key') &&
-      parent.getAttribute('data-content-key') === contentKey
-    ) {
+    // Avoid re-wrapping if parent already has the correct key
+    if (parent?.getAttribute('data-content-key') === contentKey) {
       return;
     }
 
@@ -73,24 +71,45 @@ const wrapTextInContentKeyWrapper = (node: Node, contentKey: string): void => {
     span.textContent = node.textContent;
     node.parentNode?.replaceChild(span, node);
   }
+  // Handle Element Nodes (like IMG) by setting the attribute directly
+  else if (node.nodeType === Node.ELEMENT_NODE) {
+    const element = node as Element;
+    // Avoid reapplying the same attribute
+    if (element.getAttribute('data-content-key') === contentKey) {
+      return;
+    }
+    element.setAttribute('data-content-key', contentKey);
+  }
 };
 
-const wrapTextInCheckedTextWrapper = (node: Node): void => {
+const applyCheckedAttribute = (node: Node): void => {
+  // Handle Text Nodes by wrapping them
   if (node.nodeType === Node.TEXT_NODE && node.textContent) {
     const parent = node.parentElement;
+    // Avoid re-wrapping
     if (parent?.hasAttribute('data-content-checked')) {
       return;
     }
 
     const span = document.createElement('span');
-    // --- FIX: Corrected 'trie' to 'true' ---
     span.setAttribute('data-content-checked', 'true');
     span.textContent = node.textContent;
     node.parentNode?.replaceChild(span, node);
   }
+  // Handle Element Nodes (like IMG) by setting the attribute directly
+  else if (node.nodeType === Node.ELEMENT_NODE) {
+    const element = node as Element;
+    // Avoid re-applying attribute
+    if (element.hasAttribute('data-content-checked')) {
+      return;
+    }
+    element.setAttribute('data-content-checked', 'true');
+  }
 };
 
-const findAndWrapText = (element: Node, content: ContentNode[]): void => {
+const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
+  console.log('FIND AND MARK CONTENT', content);
+
   // 1. If the current node is a text node, process it.
   if (element.nodeType === Node.TEXT_NODE && element.textContent?.trim()) {
     // Find if this text node's content matches any of the items to be highlighted.
@@ -100,10 +119,38 @@ const findAndWrapText = (element: Node, content: ContentNode[]): void => {
 
     if (matchedItem) {
       // If a match is found, wrap it in the highlight span.
-      wrapTextInContentKeyWrapper(element, matchedItem.contentKey[0]);
+      applyContentKey(
+        element,
+        matchedItem.contentKey[matchedItem.contentKey.length - 1]
+      );
     } else {
       // If no match is found, wrap it in the "checked" span.
-      wrapTextInCheckedTextWrapper(element);
+      applyCheckedAttribute(element);
+    }
+    // Once processed, we don't need to do anything else with this node.
+    return;
+  }
+
+  if (
+    element.nodeType === Node.ELEMENT_NODE &&
+    (element as Element).tagName === 'IMG'
+  ) {
+    const imgElement = element as HTMLImageElement;
+    console.log('content', content);
+    // Find if this image node's src matches any of the items to be marked.
+    const matchedItem = content.find(
+      (item) => item.type === 'image' && imgElement.src === item.url
+    );
+
+    if (matchedItem) {
+      // If a match is found, apply the contentKey directly to the IMG tag.
+      applyContentKey(
+        imgElement,
+        matchedItem.contentKey[matchedItem.contentKey.length - 1]
+      );
+    } else {
+      // If no match is found, apply the "checked" attribute directly to the IMG tag.
+      applyCheckedAttribute(imgElement);
     }
     // Once processed, we don't need to do anything else with this node.
     return;
@@ -125,7 +172,7 @@ const findAndWrapText = (element: Node, content: ContentNode[]): void => {
   // and will change when we replace nodes, which can break the loop.
   const childNodes = Array.from(element.childNodes);
   for (const child of childNodes) {
-    findAndWrapText(child, content);
+    findAndMarkElements(child, content);
   }
 };
 
@@ -139,7 +186,7 @@ export const markContentStorageElements = (
   try {
     // First, find and wrap matching text in spans with data-content-key
     if (content && content?.length > 0) {
-      findAndWrapText(document.body, content);
+      findAndMarkElements(document.body, content);
     }
 
     // Then highlight all elements with data-content-key

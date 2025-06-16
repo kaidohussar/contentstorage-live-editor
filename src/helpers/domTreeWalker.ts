@@ -34,15 +34,14 @@ export const findContentNodesInPage = (): Node[] => {
         // --- Handle ELEMENT_NODE (specifically for IMG) ---
         if (node.nodeType === Node.ELEMENT_NODE) {
           const element = node as Element;
+
+          console.log('IMAGE element.tagName', element.tagName);
+
           if (element.tagName !== 'IMG') {
             return NodeFilter.FILTER_SKIP; // We only care about IMG elements
           }
 
-          // For IMG elements, check for attributes on the element itself.
-          if (
-            element.hasAttribute('data-content-key') ||
-            element.hasAttribute('data-content-checked')
-          ) {
+          if (element.hasAttribute('data-content-checked')) {
             return NodeFilter.FILTER_REJECT; // Skip this IMG element.
           }
 

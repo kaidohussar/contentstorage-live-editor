@@ -113,7 +113,7 @@ export const mutationObserverCallback: MutationCallback = (
 
       if (nodes.length > 0) {
         console.log('BEFORE SEND FOUND TEXT NODES', window.memoryMap);
-
+        console.log('nodes!!!!!', nodes);
         const structuredContent = nodes
           .map((node) => {
             // Check if it's a Text node with content
@@ -132,12 +132,14 @@ export const mutationObserverCallback: MutationCallback = (
                 contentKey: keys,
               };
             }
-
+            console.log('(node as Element).tagName', (node as Element).tagName);
             if (
               node.nodeType === Node.ELEMENT_NODE &&
               (node as Element).tagName === 'IMG'
             ) {
               const imgElement = node as HTMLImageElement;
+
+              console.log('SRC', imgElement.src);
 
               const keys = Array.from(
                 window.memoryMap?.get(imgElement.src)?.ids || []
@@ -160,6 +162,7 @@ export const mutationObserverCallback: MutationCallback = (
           })
           .filter(Boolean) as ContentNode[];
 
+        console.log('structuredContent', structuredContent);
         sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
           contentNodes: structuredContent,
         });
