@@ -214,8 +214,28 @@ export const markContentStorageElements = (
       }
 
       if (contentStorageId && shouldHighlight) {
-        element.style.outline = `1px solid #1791FF`;
-        element.style.position = 'relative';
+
+        let wrapper;
+
+        if (isImg) {
+          // 1. Create a wrapper and give it relative positioning
+          wrapper = document.createElement('div');
+          wrapper.style.position = 'relative';
+          wrapper.style.display = 'inline-block'; // Makes the wrapper fit the image size
+
+          // 2. Wrap the image
+          // This inserts the wrapper before the image and then moves the image inside the wrapper
+          if (element.parentNode) {
+            element.parentNode.insertBefore(wrapper, element);
+            wrapper.appendChild(element);
+          }
+
+          // 3. Apply the outline to the wrapper, not the image
+          wrapper.style.outline = `1px solid #1791FF`;
+        } else {
+          element.style.outline = `1px solid #1791FF`;
+          element.style.position = 'relative';
+        }
 
         const label = document.createElement('div');
         label.setAttribute('id', 'contentstorage-element-label');
@@ -230,8 +250,13 @@ export const markContentStorageElements = (
 
         const button = editButton(contentStorageId);
 
-        element.appendChild(label);
-        element.appendChild(button);
+        if (isImg && wrapper) {
+          wrapper.appendChild(label);
+          wrapper.appendChild(button);
+        } else {
+          element.appendChild(label);
+          element.appendChild(button);
+        }
       }
     });
   } finally {
