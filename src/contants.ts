@@ -1,7 +1,9 @@
 export type OutgoingMessageType =
   (typeof OUTGOING_MESSAGE_TYPES)[keyof typeof OUTGOING_MESSAGE_TYPES];
 
-export type ContentNode = { type: string; contentKey: string[]; text: string };
+export type ContentNode =
+  | { type: 'text'; contentKey: string[]; text: string }
+  | { type: 'image'; contentKey: string[]; url: string; altText: string };
 
 export const INCOMING_MESSAGE_TYPES = {
   HANDSHAKE_ACKNOWLEDGE: 'parent-handshake-acknowledge',

@@ -1,4 +1,4 @@
-import { findTextNodesInPage } from './domTreeWalker';
+import { findContentNodesInPage } from './domTreeWalker';
 import { sendMessageToParent } from './sendMessageToParent';
 import { ContentNode, OUTGOING_MESSAGE_TYPES } from '../contants';
 import { getConfig } from './config';
@@ -26,9 +26,6 @@ export const mutationObserverCallback: MutationCallback = (
   const IGNORED_ELEMENT_IDS: string[] = ['contentstorage-element-label'];
   const STYLE_RELATED_ATTRIBUTES: string[] = ['style', 'class'];
 
-  // --- NEW: Determine if this batch of mutations was likely caused by our script. ---
-  // We check if at least one mutation involves adding our specific wrapper span.
-  // This gives us context for ignoring related mutations, like text node removals.
   const isInternalWrappingBatch = mutationsList.some(
     (mutation) =>
       mutation.type === 'childList' &&
@@ -112,36 +109,66 @@ export const mutationObserverCallback: MutationCallback = (
 
     try {
       // applyConfig(); // Assuming this is part of your process
-      const textNodes = findTextNodesInPage();
-      const texts = textNodes.map((node) => node.textContent || '');
-      if (texts.length > 0) {
+      const nodes = findContentNodesInPage();
+
+      if (nodes.length > 0) {
         console.log('BEFORE SEND FOUND TEXT NODES', window.memoryMap);
-        const allContentNodes = textNodes.map((node) => {
-          const textContent = node.textContent || '';
-          const keys = Array.from(
-            window.memoryMap?.get(textContent)?.ids || []
-          );
 
-          return {
-            contentKey: keys,
-            type: 'text',
-            text: textContent,
-          };
-        });
+        const structuredContent = nodes
+          .map((node) => {
+            // Check if it's a Text node with content
+            if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
+              const keys = Array.from(
+                window.memoryMap?.get(node.textContent)?.ids || []
+              );
 
-        const contentNodesWithMatchedId: ContentNode[] = allContentNodes.filter(
-          (node) => node.contentKey.length > 0
-        );
+              if (keys.length === 0) {
+                return null;
+              }
+
+              return {
+                type: 'text',
+                text: node.textContent.trim(),
+                contentKey: keys,
+              };
+            }
+
+            if (
+              node.nodeType === Node.ELEMENT_NODE &&
+              (node as Element).tagName === 'IMG'
+            ) {
+              const imgElement = node as HTMLImageElement;
+
+              const keys = Array.from(
+                window.memoryMap?.get(imgElement.src)?.ids || []
+              );
+
+              if (keys.length === 0) {
+                return null;
+              }
+
+              return {
+                type: 'image',
+                url: imgElement.src,
+                alt: imgElement.alt,
+                contentKey: keys,
+              };
+            }
+
+            // Return null for any nodes we want to ignore
+            return null;
+          })
+          .filter(Boolean) as ContentNode[];
 
         sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
-          contentNodes: contentNodesWithMatchedId,
+          contentNodes: structuredContent,
         });
 
         const shouldHighlight = getConfig().highlightEditableContent;
         const highlight =
           shouldHighlight === undefined ? true : shouldHighlight;
 
-        markContentStorageElements(contentNodesWithMatchedId, highlight);
+        markContentStorageElements(structuredContent, highlight);
 
         console.log(
           'Significant mutation detected. Processing and sending text nodes.'

@@ -94,8 +94,8 @@ const findAndWrapText = (element: Node, content: ContentNode[]): void => {
   // 1. If the current node is a text node, process it.
   if (element.nodeType === Node.TEXT_NODE && element.textContent?.trim()) {
     // Find if this text node's content matches any of the items to be highlighted.
-    const matchedItem = content.find((item) =>
-      element.textContent!.includes(item.text)
+    const matchedItem = content.find(
+      (item) => item.type === 'text' && element.textContent!.includes(item.text)
     );
 
     if (matchedItem) {

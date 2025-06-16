@@ -1,6 +1,6 @@
 declare global {
   interface Window {
-    memoryMap: Map<string, { ids: Set<string> }>;
+    memoryMap: Map<string, { ids: Set<string>; type: 'text' | 'image' }>;
   }
 }
 

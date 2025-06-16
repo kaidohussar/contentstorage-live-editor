@@ -10,7 +10,7 @@ const isEditableOrInsideEditable = (element: HTMLElement | null): boolean => {
   return isEditableOrInsideEditable(element.parentElement);
 };
 
-export const findTextNodesInPage = (): Node[] => {
+export const findContentNodesInPage = (): Node[] => {
   const textNodes: Node[] = [];
 
   // Define unsupported tags.
@@ -28,45 +28,73 @@ export const findTextNodesInPage = (): Node[] => {
 
   const treeWalker = document.createTreeWalker(
     document.body,
-    NodeFilter.SHOW_TEXT,
+    NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
     {
-      acceptNode: (node: Text) => {
-        const parent = node.parentElement;
-
-        // Basic filter: Skip if there's no parent or the text is just whitespace.
-        if (!parent || !node.textContent?.trim()) {
-          return NodeFilter.FILTER_SKIP;
-        }
-
-        let currentAncestor: HTMLElement | null = parent;
-        while (currentAncestor && currentAncestor !== document.body) {
-          if (
-            currentAncestor.hasAttribute('data-content-key') ||
-            currentAncestor.hasAttribute('data-content-checked')
-          ) {
-            return NodeFilter.FILTER_SKIP; // Skip this node entirely.
+      acceptNode: (node: Node) => {
+        // --- Handle ELEMENT_NODE (specifically for IMG) ---
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const element = node as Element;
+          if (element.tagName !== 'IMG') {
+            return NodeFilter.FILTER_SKIP; // We only care about IMG elements
           }
-          currentAncestor = currentAncestor.parentElement;
+
+          // For IMG elements, check for attributes on the element itself.
+          if (
+            element.hasAttribute('data-content-key') ||
+            element.hasAttribute('data-content-checked')
+          ) {
+            return NodeFilter.FILTER_REJECT; // Skip this IMG element.
+          }
+
+          // If it's an IMG and passes the checks, accept it.
+          return NodeFilter.FILTER_ACCEPT;
         }
 
-        // --- Additional Filters ---
-        // Skip if inside an unsupported element type.
-        if (isUnsupported(parent)) {
-          return NodeFilter.FILTER_SKIP;
+        // --- Handle TEXT_NODE ---
+        if (node.nodeType === Node.TEXT_NODE) {
+          // Skip empty or whitespace-only text nodes
+          if (!node.textContent?.trim()) {
+            return NodeFilter.FILTER_SKIP;
+          }
+
+          const parent = node.parentElement;
+          if (!parent) {
+            return NodeFilter.FILTER_REJECT;
+          }
+
+          // --- Ancestor and Parent-based Filters for Text Nodes ONLY ---
+          let currentAncestor: HTMLElement | null = parent;
+          while (currentAncestor && currentAncestor !== document.body) {
+            if (
+              currentAncestor.hasAttribute('data-content-key') ||
+              currentAncestor.hasAttribute('data-content-checked')
+            ) {
+              return NodeFilter.FILTER_REJECT; // Skip text nodes within these ancestors
+            }
+            currentAncestor = currentAncestor.parentElement;
+          }
+
+          // Skip if the parent is an unsupported element type.
+          if (isUnsupported(parent)) {
+            return NodeFilter.FILTER_REJECT;
+          }
+
+          // Skip if the parent element is not visible.
+          if (!isElementVisible(parent)) {
+            return NodeFilter.FILTER_REJECT;
+          }
+
+          // Skip if inside a content-editable element.
+          if (hasEditableElements && isEditableOrInsideEditable(parent)) {
+            return NodeFilter.FILTER_REJECT;
+          }
+
+          // If all checks pass for the text node, accept it.
+          return NodeFilter.FILTER_ACCEPT;
         }
 
-        // Skip if the element is not visible.
-        if (!isElementVisible(parent)) {
-          return NodeFilter.FILTER_SKIP;
-        }
-
-        // Skip if inside a content-editable element.
-        if (hasEditableElements && isEditableOrInsideEditable(parent)) {
-          return NodeFilter.FILTER_SKIP;
-        }
-
-        // If all checks pass, accept the node.
-        return NodeFilter.FILTER_ACCEPT;
+        // For any other node type, skip it.
+        return NodeFilter.FILTER_SKIP;
       },
     }
   );
