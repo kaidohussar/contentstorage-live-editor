@@ -118,18 +118,21 @@ export const mutationObserverCallback: MutationCallback = (
           .map((node) => {
             // Check if it's a Text node with content
             if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
-              const keys = Array.from(
-                window.memoryMap?.get(node.textContent)?.ids || []
-              );
+              const content = window.memoryMap?.get(node.textContent);
+
+              const keys = Array.from(content?.ids || []);
+              const type = content?.type || 'text';
+              const variation = content?.variation;
 
               if (keys.length === 0) {
                 return null;
               }
 
               return {
-                type: 'text',
+                type,
                 text: node.textContent.trim(),
                 contentKey: keys,
+                variation,
               };
             }
             console.log('(node as Element).tagName', (node as Element).tagName);
