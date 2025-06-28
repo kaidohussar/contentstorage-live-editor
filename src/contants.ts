@@ -5,6 +5,7 @@ export type OutgoingMessageType =
 
 export type ContentNode =
   | { type: 'text'; contentKey: string[]; text: string }
+  | { type: 'variation'; contentKey: string[]; text: string; variation: string }
   | { type: 'image'; contentKey: string[]; url: string; altText: string };
 
 export const INCOMING_MESSAGE_TYPES = {

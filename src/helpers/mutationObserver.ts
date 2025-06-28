@@ -3,6 +3,7 @@ import { sendMessageToParent } from './sendMessageToParent';
 import { ContentNode, OUTGOING_MESSAGE_TYPES } from '../contants';
 import { getConfig } from './config';
 import { markContentStorageElements } from './markContentStorageElements';
+import { ContentNodeData } from '../types';
 
 function isInternalWrapper(node: Node): boolean {
   if (node.nodeType !== Node.ELEMENT_NODE) {
@@ -43,10 +44,6 @@ export const mutationObserverCallback: MutationCallback = (
       }
     }
 
-    // --- NEW: Ignore corresponding text node removals during our wrapping operation. ---
-    // If we've established this is an internal batch, and we encounter a mutation
-    // that is *only* removing text nodes, we can safely assume it's the other
-    // half of our wrapping process and ignore it.
     if (isInternalWrappingBatch && mutation.type === 'childList') {
       const onlyTextNodesRemoved =
         mutation.removedNodes.length > 0 &&
@@ -128,12 +125,17 @@ export const mutationObserverCallback: MutationCallback = (
                 return null;
               }
 
-              return {
+              const data: ContentNodeData = {
                 type,
                 text: node.textContent.trim(),
                 contentKey: keys,
-                variation,
               };
+
+              if (variation) {
+                data.variation = variation;
+              }
+
+              return data;
             }
             console.log('(node as Element).tagName', (node as Element).tagName);
             if (

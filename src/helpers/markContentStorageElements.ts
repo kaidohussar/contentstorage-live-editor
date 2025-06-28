@@ -110,13 +110,13 @@ const applyCheckedAttribute = (node: Node): void => {
 };
 
 const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
-  console.log('FIND AND MARK CONTENT', content);
-
   // 1. If the current node is a text node, process it.
   if (element.nodeType === Node.TEXT_NODE && element.textContent?.trim()) {
     // Find if this text node's content matches any of the items to be highlighted.
     const matchedItem = content.find(
-      (item) => item.type === 'text' && element.textContent!.includes(item.text)
+      (item) =>
+        (item.type === 'text' || item.type === 'variation') &&
+        element.textContent?.includes(item.text)
     );
 
     if (matchedItem) {
@@ -169,9 +169,6 @@ const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
     }
   }
 
-  // 3. If it's an element node, recursively call this function on its children.
-  // We must copy childNodes to an array because the original NodeList is "live"
-  // and will change when we replace nodes, which can break the loop.
   const childNodes = Array.from(element.childNodes);
   for (const child of childNodes) {
     findAndMarkElements(child, content);
@@ -197,7 +194,7 @@ export const markContentStorageElements = (
     console.log('elements', elements);
     elements.forEach((element) => {
       const contentStorageId = element.dataset.contentKey;
-      const isImg = isImageElement(element)
+      const isImg = isImageElement(element);
       console.log('contentStorageId', contentStorageId);
 
       if (isImg && !element.src) {
@@ -215,23 +212,27 @@ export const markContentStorageElements = (
       }
 
       if (contentStorageId && shouldHighlight) {
-
         let wrapper;
 
         if (isImg) {
           // 1. Create a wrapper and give it relative positioning
           wrapper = document.createElement('div');
+          const wrapperElemId = 'contentstorage-element-image-wrapper';
+          wrapper.setAttribute('id', wrapperElemId);
           wrapper.style.position = 'relative';
           wrapper.style.display = 'inline-block'; // Makes the wrapper fit the image size
 
+          const parenElemAlreadySet =
+            element.parentNode instanceof HTMLElement &&
+            element.parentNode.id === wrapperElemId;
+
           // 2. Wrap the image
           // This inserts the wrapper before the image and then moves the image inside the wrapper
-          if (element.parentNode) {
+          if (element.parentNode && !parenElemAlreadySet) {
             element.parentNode.insertBefore(wrapper, element);
             wrapper.appendChild(element);
           }
 
-          // 3. Apply the outline to the wrapper, not the image
           wrapper.style.outline = `1px solid #1791FF`;
         } else {
           element.style.outline = `1px solid #1791FF`;
@@ -267,6 +268,9 @@ export const markContentStorageElements = (
 
 export const hideContentstorageElementsHighlight = () => {
   const elements = document.querySelectorAll<HTMLElement>('[data-content-key]');
+  const imageWrappers = document.querySelectorAll<HTMLElement>(
+    '#contentstorage-element-image-wrapper'
+  );
   const labels = document.querySelectorAll<HTMLElement>(
     '#contentstorage-element-label'
   );
@@ -274,6 +278,16 @@ export const hideContentstorageElementsHighlight = () => {
     '#contentstorage-element-button'
   );
 
+  imageWrappers.forEach((wrapper) => {
+    const image = wrapper.querySelector('img');
+
+    const parent = wrapper.parentNode;
+
+    if (parent && image) {
+      parent.insertBefore(image, wrapper);
+      parent.removeChild(wrapper);
+    }
+  });
   elements.forEach((item) => (item.style = ''));
 
   [...labels, ...buttons].forEach((item) => item.remove());

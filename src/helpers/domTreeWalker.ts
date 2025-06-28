@@ -40,7 +40,10 @@ export const findContentNodesInPage = (): Node[] => {
           if (element.tagName !== 'IMG') {
             return NodeFilter.FILTER_SKIP; // We only care about IMG elements
           }
-          console.log('image element', element.hasAttribute('data-content-checked'));
+          console.log(
+            'image element',
+            element.hasAttribute('data-content-checked')
+          );
           if (element.hasAttribute('data-content-checked')) {
             return NodeFilter.FILTER_REJECT; // Skip this IMG element.
           }
@@ -64,10 +67,7 @@ export const findContentNodesInPage = (): Node[] => {
           // --- Ancestor and Parent-based Filters for Text Nodes ONLY ---
           let currentAncestor: HTMLElement | null = parent;
           while (currentAncestor && currentAncestor !== document.body) {
-            if (
-              currentAncestor.hasAttribute('data-content-key') ||
-              currentAncestor.hasAttribute('data-content-checked')
-            ) {
+            if (currentAncestor.hasAttribute('data-content-checked')) {
               return NodeFilter.FILTER_REJECT; // Skip text nodes within these ancestors
             }
             currentAncestor = currentAncestor.parentElement;
