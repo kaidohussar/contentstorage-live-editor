@@ -315,11 +315,45 @@ export const showPendingChanges = (pendingChanges: PendingChangeSimple[]) => {
           const textVal = change.value?.toString() || '';
 
           if (textVal && change.langCountry === window.currentLanguageCode) {
+            elem.setAttribute('data-content-showing-pending-change', 'true');
             node.nodeValue = change.value?.toString() || '';
           }
 
           break; // Remove this 'break' if you want to replace ALL text nodes with the new text.
         }
+      }
+    }
+  });
+};
+
+export const showOriginalContent = () => {
+  const pendingChangesContent = document.querySelectorAll<HTMLElement>(
+    `[data-content-showing-pending-change="true"]`
+  );
+
+  pendingChangesContent.forEach((pendingChangeElem) => {
+    const childNodes = pendingChangeElem.childNodes;
+    const contentKey = pendingChangeElem.getAttribute('data-content-key');
+
+    // Loop through all the child nodes
+    for (const node of childNodes) {
+      // Check if the node is a text node (nodeType === 3)
+      // and if its content is not just whitespace.
+      if (
+        contentKey &&
+        node.nodeType === Node.TEXT_NODE &&
+        node.textContent &&
+        node.textContent.trim().length > 0
+      ) {
+        const textVal = Array.from(window.memoryMap).find(([key, data]) => {
+          return data.ids.has(contentKey);
+        });
+
+        if (textVal && textVal.length > 0 && typeof textVal[0] === 'string') {
+          node.nodeValue = textVal[0] || '';
+        }
+
+        break; // Remove this 'break' if you want to replace ALL text nodes with the new text.
       }
     }
   });

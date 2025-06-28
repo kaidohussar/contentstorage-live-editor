@@ -7,6 +7,7 @@ import { setAndApplyInitialConfig, setConfig } from './helpers/config';
 import {
   hideContentstorageElementsHighlight,
   markContentStorageElements,
+  showOriginalContent,
   showPendingChanges,
 } from './helpers/markContentStorageElements';
 import {
@@ -127,6 +128,12 @@ import { PendingChangeSimple } from './types';
               showPendingChanges(
                 event.data.payload.data as PendingChangeSimple[]
               );
+            }
+
+            if (
+              event.data.type === INCOMING_MESSAGE_TYPES.SHOW_ORIGINAL_CONTENT
+            ) {
+              showOriginalContent();
             }
 
             // Process other messages here

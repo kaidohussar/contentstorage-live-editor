@@ -14,6 +14,7 @@ export const INCOMING_MESSAGE_TYPES = {
   SET_HIGHLIGHT_CONTENT: 'contentstorage-set-highlight-content',
   SET_HIDE_HIGHLIGHT_CONTENT: 'contentstorage-set-hide-highlight-content',
   SHOW_PENDING_CHANGES: 'contentstorage-show-pending-changes',
+  SHOW_ORIGINAL_CONTENT: 'contentstorage-show-original-content',
 } as const;
 
 export const OUTGOING_MESSAGE_TYPES = {
