@@ -1,3 +1,5 @@
+import { PendingChangeSimple } from './types';
+
 export type OutgoingMessageType =
   (typeof OUTGOING_MESSAGE_TYPES)[keyof typeof OUTGOING_MESSAGE_TYPES];
 
@@ -10,6 +12,7 @@ export const INCOMING_MESSAGE_TYPES = {
   SET_CONFIG: 'contentstorage-set-config',
   SET_HIGHLIGHT_CONTENT: 'contentstorage-set-highlight-content',
   SET_HIDE_HIGHLIGHT_CONTENT: 'contentstorage-set-hide-highlight-content',
+  SHOW_PENDING_CHANGES: 'contentstorage-show-pending-changes',
 } as const;
 
 export const OUTGOING_MESSAGE_TYPES = {
@@ -28,9 +31,9 @@ export type MessagePayloadMap = {
   };
 };
 
-// export type IncomingMessagePayloadMap = {
-//   /* */
-// };
+export type IncomingMessagePayloadMap = {
+  [INCOMING_MESSAGE_TYPES.SHOW_PENDING_CHANGES]: PendingChangeSimple[];
+};
 
 export const COMMUNICATION_TIMEOUT_MS = 5000; // 5 seconds
 

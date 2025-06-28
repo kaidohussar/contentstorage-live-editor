@@ -1,5 +1,6 @@
 import { sendMessageToParent } from './sendMessageToParent';
 import { ContentNode, OUTGOING_MESSAGE_TYPES } from '../contants';
+import { PendingChangeSimple } from '../types';
 import { isImageElement } from './typeguards';
 
 let isProcessing = false;
@@ -276,4 +277,36 @@ export const hideContentstorageElementsHighlight = () => {
   elements.forEach((item) => (item.style = ''));
 
   [...labels, ...buttons].forEach((item) => item.remove());
+};
+
+export const showPendingChanges = (pendingChanges: PendingChangeSimple[]) => {
+  console.log('pendingChanges', pendingChanges);
+  pendingChanges.forEach((change) => {
+    const elem = document.querySelector(
+      `[data-content-key="${change.contentId}"]`
+    );
+
+    if (elem) {
+      const childNodes = elem.childNodes;
+
+      // Loop through all the child nodes
+      for (const node of childNodes) {
+        // Check if the node is a text node (nodeType === 3)
+        // and if its content is not just whitespace.
+        if (
+          node.nodeType === Node.TEXT_NODE &&
+          node.textContent &&
+          node.textContent.trim().length > 0
+        ) {
+          const textVal = change.value?.toString() || '';
+
+          if (textVal && change.langCountry === window.currentLanguageCode) {
+            node.nodeValue = change.value?.toString() || '';
+          }
+
+          break; // Remove this 'break' if you want to replace ALL text nodes with the new text.
+        }
+      }
+    }
+  });
 };

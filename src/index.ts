@@ -7,12 +7,14 @@ import { setAndApplyInitialConfig, setConfig } from './helpers/config';
 import {
   hideContentstorageElementsHighlight,
   markContentStorageElements,
+  showPendingChanges,
 } from './helpers/markContentStorageElements';
 import {
   mutationObserverCallback,
   mutationObserverConfig,
 } from './helpers/mutationObserver';
 import { sendMessageToParent } from './helpers/sendMessageToParent';
+import { PendingChangeSimple } from './types';
 
 (function () {
   const currentScript = document.currentScript as HTMLScriptElement;
@@ -117,6 +119,14 @@ import { sendMessageToParent } from './helpers/sendMessageToParent';
             ) {
               setConfig({ highlightEditableContent: false });
               hideContentstorageElementsHighlight();
+            }
+
+            if (
+              event.data.type === INCOMING_MESSAGE_TYPES.SHOW_PENDING_CHANGES
+            ) {
+              showPendingChanges(
+                event.data.payload.data as PendingChangeSimple[]
+              );
             }
 
             // Process other messages here

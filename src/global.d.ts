@@ -1,6 +1,7 @@
 declare global {
   interface Window {
     memoryMap: Map<string, { ids: Set<string>; type: 'text' | 'image' }>;
+    currentLanguageCode: string | null;
   }
 }
 
