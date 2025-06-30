@@ -115,7 +115,18 @@ export const mutationObserverCallback: MutationCallback = (
           .map((node) => {
             // Check if it's a Text node with content
             if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
-              const content = window.memoryMap?.get(node.textContent);
+              let content = window.memoryMap?.get(node.textContent);
+
+              const isShowingPendingChange = node.parentElement?.getAttribute('data-content-showing-pending-change');
+
+              if (isShowingPendingChange) {
+                const contentId = node.parentElement?.getAttribute('data-content-key') || '';
+                Array.from(window.memoryMap).forEach((node) => {
+                  if (node[1].ids.has(contentId)) {
+                    content = node[1];
+                  }
+                })
+              }
 
               const keys = Array.from(content?.ids || []);
               const type = content?.type || 'text';
