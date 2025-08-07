@@ -249,6 +249,7 @@ export const markContentStorageElements = (
         label.style.left = 'calc(100% + 10px)';
         label.style.color = '#1791FF';
         label.style.fontSize = '10px';
+        label.style.fontWeight = '400';
         label.style.zIndex = '9999';
         label.style.pointerEvents = 'none';
 
