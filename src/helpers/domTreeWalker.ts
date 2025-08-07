@@ -12,7 +12,6 @@ const isEditableOrInsideEditable = (element: HTMLElement | null): boolean => {
 
 export const findContentNodesInPage = (): Node[] => {
   const textNodes: Node[] = [];
-  console.log('NOTES', textNodes);
   // Define unsupported tags.
   const isUnsupported = (element: HTMLElement): boolean =>
     element instanceof HTMLScriptElement ||
@@ -31,25 +30,49 @@ export const findContentNodesInPage = (): Node[] => {
     NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
     {
       acceptNode: (node: Node) => {
-        // --- Handle ELEMENT_NODE (specifically for IMG) ---
+        // --- Handle ELEMENT_NODE (IMG and INPUT) ---
         if (node.nodeType === Node.ELEMENT_NODE) {
-          const element = node as Element;
+          const element = node as HTMLElement;
 
-          console.log('IMAGE element.tagName', element.tagName);
+          const isImg = element.tagName === 'IMG';
+          const isInputWithPlaceholder =
+            element.tagName === 'INPUT' &&
+            ((element as HTMLInputElement).placeholder?.trim() ||
+              element.getAttribute('aria-label')?.trim());
 
-          if (element.tagName !== 'IMG') {
-            return NodeFilter.FILTER_SKIP; // We only care about IMG elements
+          if (isImg || isInputWithPlaceholder) {
+            // We apply a set of checks similar to what's done for text node parents.
+
+            // Check the element and its ancestors for 'data-content-checked'
+            let currentAncestor: HTMLElement | null = element;
+            while (currentAncestor && currentAncestor !== document.body) {
+              if (currentAncestor.hasAttribute('data-content-checked')) {
+                return NodeFilter.FILTER_REJECT;
+              }
+              currentAncestor = currentAncestor.parentElement;
+            }
+
+            // Element itself should not be an unsupported type.
+            if (isUnsupported(element)) {
+              return NodeFilter.FILTER_REJECT;
+            }
+
+            // Element must be visible.
+            if (!isElementVisible(element)) {
+              return NodeFilter.FILTER_REJECT;
+            }
+
+            // Skip if inside a content-editable element.
+            if (hasEditableElements && isEditableOrInsideEditable(element)) {
+              return NodeFilter.FILTER_REJECT;
+            }
+
+            // If all checks pass, accept the element.
+            return NodeFilter.FILTER_ACCEPT;
           }
-          console.log(
-            'image element',
-            element.hasAttribute('data-content-checked')
-          );
-          if (element.hasAttribute('data-content-checked')) {
-            return NodeFilter.FILTER_REJECT; // Skip this IMG element.
-          }
 
-          // If it's an IMG and passes the checks, accept it.
-          return NodeFilter.FILTER_ACCEPT;
+          // For other elements, we just want to traverse them.
+          return NodeFilter.FILTER_SKIP;
         }
 
         // --- Handle TEXT_NODE ---
@@ -102,6 +125,6 @@ export const findContentNodesInPage = (): Node[] => {
   while ((currentNode = treeWalker.nextNode())) {
     textNodes.push(currentNode);
   }
-  console.log('ALLAALALALALAL', textNodes);
+  console.log('TEXTNODEES', textNodes);
   return textNodes;
 };

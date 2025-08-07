@@ -135,24 +135,45 @@ const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
 
   if (
     element.nodeType === Node.ELEMENT_NODE &&
-    (element as Element).tagName === 'IMG'
+    ((element as Element).tagName === 'IMG' ||
+      (element as Element).tagName === 'INPUT')
   ) {
-    const imgElement = element as HTMLImageElement;
-    console.log('content', content);
-    // Find if this image node's src matches any of the items to be marked.
-    const matchedItem = content.find(
-      (item) => item.type === 'image' && imgElement.src === item.url
-    );
+    const htmlElement = element as HTMLElement;
+    let matchedItem: ContentNode | undefined;
+
+    if (htmlElement.tagName === 'IMG') {
+      const imgElement = htmlElement as HTMLImageElement;
+      console.log('content', content);
+      // Find if this image node's src matches any of the items to be marked.
+      matchedItem = content.find(
+        (item) => item.type === 'image' && item.url === imgElement.src
+      );
+    } else {
+      // It must be an INPUT
+      const inputElement = htmlElement as HTMLInputElement;
+      const contentValue =
+        inputElement.placeholder?.trim() ||
+        inputElement.getAttribute('aria-label')?.trim();
+      if (contentValue) {
+        matchedItem = content.find((item) => {
+          if (item.type === 'text') {
+            return item.text === contentValue;
+          } else if (item.type === 'variation') {
+            return item.variation === contentValue;
+          }
+        });
+      }
+    }
 
     if (matchedItem) {
-      // If a match is found, apply the contentKey directly to the IMG tag.
+      // If a match is found, apply the contentKey directly to the element.
       applyContentKey(
-        imgElement,
+        element,
         matchedItem.contentKey[matchedItem.contentKey.length - 1]
       );
     } else {
-      // If no match is found, apply the "checked" attribute directly to the IMG tag.
-      applyCheckedAttribute(imgElement);
+      // If no match is found, apply the "checked" attribute directly to the element.
+      applyCheckedAttribute(element);
     }
     // Once processed, we don't need to do anything else with this node.
     return;
@@ -194,75 +215,89 @@ export const markContentStorageElements = (
     console.log('elements', elements);
     elements.forEach((element) => {
       const contentStorageId = element.dataset.contentKey;
+      if (!contentStorageId || !shouldHighlight) {
+        return;
+      }
+
       const isImg = isImageElement(element);
-      console.log('contentStorageId', contentStorageId);
+      const isInput = element.tagName === 'INPUT';
+      let contentValue: string | null | undefined;
+      let wrapper: HTMLElement | null = null;
 
-      if (isImg && !element.src) {
+      // Determine the content value based on element type
+      if (isImg) {
+        contentValue = element.src;
+      } else if (isInput) {
+        const inputElement = element as HTMLInputElement;
+        contentValue =
+          inputElement.placeholder || inputElement.getAttribute('aria-label');
+      } else {
+        contentValue = element.textContent;
+      }
+
+      // Ensure the content is valid and tracked
+      if (!contentValue || !window.memoryMap.has(contentValue)) {
         return;
       }
 
-      if (!isImg && !element.textContent) {
-        return;
-      }
+      // Create a wrapper for IMG and INPUT elements to help with positioning
+      if (isImg || isInput) {
+        const wrapperElemId = isImg
+          ? 'contentstorage-element-image-wrapper'
+          : 'contentstorage-element-input-wrapper';
 
-      const contentValue = isImg ? element.src : element.textContent;
-
-      if (window && !window.memoryMap.has(contentValue || '')) {
-        return;
-      }
-
-      if (contentStorageId && shouldHighlight) {
-        let wrapper;
-
-        if (isImg) {
-          // 1. Create a wrapper and give it relative positioning
+        const parentNode = element.parentNode as HTMLElement;
+        // Check if the element is already wrapped
+        if (parentNode && parentNode.id === wrapperElemId) {
+          wrapper = parentNode;
+        } else {
           wrapper = document.createElement('div');
-          const wrapperElemId = 'contentstorage-element-image-wrapper';
           wrapper.setAttribute('id', wrapperElemId);
           wrapper.style.position = 'relative';
-          wrapper.style.display = 'inline-block'; // Makes the wrapper fit the image size
+          wrapper.style.display = 'inline-block'; // Fit the content
 
-          const parenElemAlreadySet =
-            element.parentNode instanceof HTMLElement &&
-            element.parentNode.id === wrapperElemId;
-
-          // 2. Wrap the image
-          // This inserts the wrapper before the image and then moves the image inside the wrapper
-          if (element.parentNode && !parenElemAlreadySet) {
+          if (element.parentNode) {
             element.parentNode.insertBefore(wrapper, element);
             wrapper.appendChild(element);
           }
-
-          wrapper.style.outline = `1px solid #1791FF`;
-        } else {
-          element.style.outline = `1px solid #1791FF`;
-          element.style.outlineOffset = '4px';
-          element.style.borderRadius = '2px';
-          element.style.position = 'relative';
         }
-
-        const label = document.createElement('div');
-        label.setAttribute('id', 'contentstorage-element-label');
-        label.textContent = contentStorageId;
-        label.style.position = 'absolute';
-        label.style.top = '4px';
-        label.style.left = 'calc(100% + 10px)';
-        label.style.color = '#1791FF';
-        label.style.fontSize = '10px';
-        label.style.fontWeight = '400';
-        label.style.zIndex = '9999';
-        label.style.pointerEvents = 'none';
-
-        const button = editButton(contentStorageId);
-
-        if (isImg && wrapper) {
-          wrapper.appendChild(label);
-          wrapper.appendChild(button);
-        } else {
-          element.appendChild(label);
-          element.appendChild(button);
-        }
+        wrapper.style.outline = `1px solid #1791FF`;
+        wrapper.style.borderRadius = isImg ? '2px' : '4px';
+      } else {
+        // For text nodes (spans), style them directly
+        element.style.outline = `1px solid #1791FF`;
+        element.style.outlineOffset = '4px';
+        element.style.borderRadius = '2px';
+        element.style.position = 'relative';
       }
+
+      const parentForControls = wrapper || element;
+
+      // Prevent adding duplicate labels or buttons
+      if (parentForControls.querySelector('#contentstorage-element-label')) {
+        return;
+      }
+
+      const label = document.createElement('div');
+      label.setAttribute('id', 'contentstorage-element-label');
+      label.textContent = contentStorageId;
+      label.style.position = 'absolute';
+      if (isInput || isImg) {
+        label.style.bottom = '0px';
+      } else {
+        label.style.top = '4px';
+      }
+      label.style.left = 'calc(100% + 10px)';
+      label.style.color = '#1791FF';
+      label.style.fontSize = '10px';
+      label.style.fontWeight = '400';
+      label.style.zIndex = '9999';
+      label.style.pointerEvents = 'none';
+
+      const button = editButton(contentStorageId);
+
+      parentForControls.appendChild(label);
+      parentForControls.appendChild(button);
     });
   } finally {
     isProcessing = false;
@@ -271,8 +306,8 @@ export const markContentStorageElements = (
 
 export const hideContentstorageElementsHighlight = () => {
   const elements = document.querySelectorAll<HTMLElement>('[data-content-key]');
-  const imageWrappers = document.querySelectorAll<HTMLElement>(
-    '#contentstorage-element-image-wrapper'
+  const wrappers = document.querySelectorAll<HTMLElement>(
+    '#contentstorage-element-image-wrapper, #contentstorage-element-input-wrapper'
   );
   const labels = document.querySelectorAll<HTMLElement>(
     '#contentstorage-element-label'
@@ -281,17 +316,17 @@ export const hideContentstorageElementsHighlight = () => {
     '#contentstorage-element-button'
   );
 
-  imageWrappers.forEach((wrapper) => {
-    const image = wrapper.querySelector('img');
-
+  wrappers.forEach((wrapper) => {
+    const elementToUnwrap = wrapper.querySelector('img, input');
     const parent = wrapper.parentNode;
 
-    if (parent && image) {
-      parent.insertBefore(image, wrapper);
+    if (parent && elementToUnwrap) {
+      parent.insertBefore(elementToUnwrap, wrapper);
       parent.removeChild(wrapper);
     }
   });
-  elements.forEach((item) => (item.style = ''));
+
+  elements.forEach((item) => (item.style.cssText = ''));
 
   [...labels, ...buttons].forEach((item) => item.remove());
 };
