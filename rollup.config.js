@@ -6,7 +6,7 @@ export default {
   input: 'src/index.ts',
   output: [
     {
-      file: 'dist/bundle.es5.mjs',
+      file: 'dist/live-editor.js',
       format: 'es',
     },
   ],
@@ -21,10 +21,7 @@ export default {
         [
           '@babel/preset-env',
           {
-            targets: {
-              browsers:
-                '> 0.5%, last 2 versions, Firefox ESR, not dead, ie >= 11',
-            },
+            targets: 'last 2 years',
           },
         ],
       ],

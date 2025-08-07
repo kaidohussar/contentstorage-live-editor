@@ -17,6 +17,89 @@ function isInternalWrapper(node: Node): boolean {
   );
 }
 
+export function processDomChanges() {
+  try {
+    // applyConfig(); // Assuming this is part of your process
+    const nodes = findContentNodesInPage();
+
+    if (nodes.length > 0) {
+      console.log('BEFORE SEND FOUND TEXT NODES', window.memoryMap);
+      console.log('nodes!!!!!', nodes);
+      const structuredContent = nodes
+        .map((node) => {
+          // Check if it's a Text node with content
+          if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
+            const content = window.memoryMap?.get(node.textContent);
+
+            const keys = Array.from(content?.ids || []);
+            const type = content?.type || 'text';
+            const variation = content?.variation;
+
+            if (keys.length === 0) {
+              return null;
+            }
+
+            const data: ContentNodeData = {
+              type,
+              text: node.textContent.trim(),
+              contentKey: keys,
+            };
+
+            if (variation) {
+              data.variation = variation;
+            }
+
+            return data;
+          }
+          console.log('(node as Element).tagName', (node as Element).tagName);
+          if (
+            node.nodeType === Node.ELEMENT_NODE &&
+            (node as Element).tagName === 'IMG'
+          ) {
+            const imgElement = node as HTMLImageElement;
+
+            console.log('SRC', imgElement.src);
+            console.log('MEMORY', window.memoryMap);
+            const keys = Array.from(
+              window.memoryMap?.get(imgElement.src)?.ids || []
+            );
+            console.log('KEYS', keys);
+            if (keys.length === 0) {
+              return null;
+            }
+
+            return {
+              type: 'image',
+              url: imgElement.src,
+              alt: imgElement.alt,
+              contentKey: keys,
+            };
+          }
+
+          // Return null for any nodes we want to ignore
+          return null;
+        })
+        .filter(Boolean) as ContentNode[];
+
+      console.log('structuredContent', structuredContent);
+      sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
+        contentNodes: structuredContent,
+      });
+
+      const shouldHighlight = getConfig().highlightEditableContent;
+      const highlight = shouldHighlight === undefined ? true : shouldHighlight;
+
+      markContentStorageElements(structuredContent, highlight);
+
+      console.log(
+        'Significant mutation detected. Processing and sending text nodes.'
+      );
+    }
+  } catch (error) {
+    console.error('Error during DOM processing after mutation:', error);
+  }
+}
+
 export const mutationObserverCallback: MutationCallback = (
   mutationsList,
   observer
@@ -104,96 +187,16 @@ export const mutationObserverCallback: MutationCallback = (
   if (significantMutationDetected) {
     observer.disconnect();
 
-    try {
-      // applyConfig(); // Assuming this is part of your process
-      const nodes = findContentNodesInPage();
+    processDomChanges();
 
-      if (nodes.length > 0) {
-        console.log('BEFORE SEND FOUND TEXT NODES', window.memoryMap);
-        console.log('nodes!!!!!', nodes);
-        const structuredContent = nodes
-          .map((node) => {
-            // Check if it's a Text node with content
-            if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
-              const content = window.memoryMap?.get(node.textContent);
-
-              const keys = Array.from(content?.ids || []);
-              const type = content?.type || 'text';
-              const variation = content?.variation;
-
-              if (keys.length === 0) {
-                return null;
-              }
-
-              const data: ContentNodeData = {
-                type,
-                text: node.textContent.trim(),
-                contentKey: keys,
-              };
-
-              if (variation) {
-                data.variation = variation;
-              }
-
-              return data;
-            }
-            console.log('(node as Element).tagName', (node as Element).tagName);
-            if (
-              node.nodeType === Node.ELEMENT_NODE &&
-              (node as Element).tagName === 'IMG'
-            ) {
-              const imgElement = node as HTMLImageElement;
-
-              console.log('SRC', imgElement.src);
-              console.log('MEMORY', window.memoryMap);
-              const keys = Array.from(
-                window.memoryMap?.get(imgElement.src)?.ids || []
-              );
-              console.log('KEYS', keys);
-              if (keys.length === 0) {
-                return null;
-              }
-
-              return {
-                type: 'image',
-                url: imgElement.src,
-                alt: imgElement.alt,
-                contentKey: keys,
-              };
-            }
-
-            // Return null for any nodes we want to ignore
-            return null;
-          })
-          .filter(Boolean) as ContentNode[];
-
-        console.log('structuredContent', structuredContent);
-        sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
-          contentNodes: structuredContent,
-        });
-
-        const shouldHighlight = getConfig().highlightEditableContent;
-        const highlight =
-          shouldHighlight === undefined ? true : shouldHighlight;
-
-        markContentStorageElements(structuredContent, highlight);
-
-        console.log(
-          'Significant mutation detected. Processing and sending text nodes.'
-        );
-      }
-    } catch (error) {
-      console.error('Error during DOM processing after mutation:', error);
-    } finally {
-      // Reconnect the observer asynchronously.
-      Promise.resolve()
-        .then(() => {
-          observer.observe(ACTUAL_OBSERVED_TARGET_NODE, mutationObserverConfig);
-        })
-        .catch((promiseError) => {
-          console.error('Error re-observing target node:', promiseError);
-        });
-    }
+    // Reconnect the observer asynchronously.
+    Promise.resolve()
+      .then(() => {
+        observer.observe(ACTUAL_OBSERVED_TARGET_NODE, mutationObserverConfig);
+      })
+      .catch((promiseError) => {
+        console.error('Error re-observing target node:', promiseError);
+      });
   }
 };
 

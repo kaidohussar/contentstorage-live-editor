@@ -13,6 +13,7 @@ import {
 import {
   mutationObserverCallback,
   mutationObserverConfig,
+  processDomChanges,
 } from './helpers/mutationObserver';
 import { sendMessageToParent } from './helpers/sendMessageToParent';
 import { PendingChangeSimple } from './types';
@@ -63,11 +64,6 @@ import { PendingChangeSimple } from './types';
 
     // Handler for messages from the parent
     const messageFromParentHandler = (event: MessageEvent) => {
-      // if (event.origin !== IFRAME_PARENT_ORIGIN) {
-      //   console.warn("CDN Script: Received message from unexpected origin:", event.origin);
-      //   return;
-      // }
-
       if (event.source === window.parent && event.data) {
         if (event.data.type === INCOMING_MESSAGE_TYPES.HANDSHAKE_ACKNOWLEDGE) {
           if (!handshakeSuccessful) {
@@ -81,6 +77,8 @@ import { PendingChangeSimple } from './types';
 
             setAndApplyInitialConfig(event.data.payload.data.config);
             console.log('Applied config:', event.data.payload);
+
+            processDomChanges();
 
             console.log('Started observing DOM for mutations');
             observer.observe(document.body, mutationObserverConfig);

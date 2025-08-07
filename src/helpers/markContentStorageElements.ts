@@ -15,8 +15,8 @@ const editButton = (contentId: string) => {
   button.style.width = '30px';
   button.style.height = '30px';
   button.style.position = 'absolute';
-  button.style.top = '-15px';
-  button.style.right = '-10px';
+  button.style.top = '-25px';
+  button.style.right = '-15px';
 
   // Styles previously in .edit-button class
   button.style.cursor = 'pointer';
@@ -236,6 +236,8 @@ export const markContentStorageElements = (
           wrapper.style.outline = `1px solid #1791FF`;
         } else {
           element.style.outline = `1px solid #1791FF`;
+          element.style.outlineOffset = '4px';
+          element.style.borderRadius = '2px';
           element.style.position = 'relative';
         }
 
@@ -243,8 +245,8 @@ export const markContentStorageElements = (
         label.setAttribute('id', 'contentstorage-element-label');
         label.textContent = contentStorageId;
         label.style.position = 'absolute';
-        label.style.top = '-15px';
-        label.style.left = '0px';
+        label.style.top = '4px';
+        label.style.left = 'calc(100% + 10px)';
         label.style.color = '#1791FF';
         label.style.fontSize = '10px';
         label.style.zIndex = '9999';
