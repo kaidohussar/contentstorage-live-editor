@@ -27,7 +27,7 @@ import { PendingChangeSimple } from './types';
     return;
   }
   const scriptSrc = currentScript.src;
-  console.log(`CDN Script: Loaded from ${scriptSrc}`);
+  console.log(`[Live editor] CDN Script loaded from ${scriptSrc}`);
 
   // --- 2. Check for 'contentstorage-live-editor' URL Parameter ---
   let liveEditorParamValue: string | null = null;
@@ -53,7 +53,7 @@ import { PendingChangeSimple } from './types';
 
   if (window.parent && window.parent !== window) {
     console.log(
-      'CDN Script: Running inside an iframe. Setting up communication with parent and initiating handshake.'
+      '[Live editor] Running inside an iframe. Setting up communication with parent and initiating handshake.'
     );
 
     // Create an observer instance linked to the callback function
@@ -71,25 +71,25 @@ import { PendingChangeSimple } from './types';
             handshakeSuccessful = true;
 
             console.log(
-              'CDN Script: Received handshake acknowledgment from parent:',
+              '[Live editor] Received handshake acknowledgment from parent:',
               event.data.payload
             );
 
             setAndApplyInitialConfig(event.data.payload.data.config);
-            console.log('Applied config:', event.data.payload);
+            console.log('[Live editor] Applied config:', event.data.payload);
 
             processDomChanges();
 
-            console.log('Started observing DOM for mutations');
+            console.log('[Live editor] Started observing DOM for mutations');
             observer.observe(document.body, mutationObserverConfig);
 
             console.log(
-              'CDN Script: Received handshake acknowledgment from parent:',
+              '[Live editor] Received handshake acknowledgment from parent:',
               event.data.payload
             );
             cleanupHandshakeResources();
             console.log(
-              'CDN Script: Parent communication handshake successful. Ready for further messages.'
+              '[Live editor] Parent communication handshake successful. Ready for further messages.'
             );
             // Start
           }
@@ -97,7 +97,7 @@ import { PendingChangeSimple } from './types';
           // Handle other types of messages from the parent after handshake
           if (handshakeSuccessful) {
             console.log(
-              'CDN Script: Received further message from parent:',
+              '[Live editor] Received further message from parent:',
               event.data
             );
 
@@ -176,7 +176,7 @@ import { PendingChangeSimple } from './types';
     }, COMMUNICATION_TIMEOUT_MS);
   } else {
     console.log(
-      'CDN Script: Not running inside an iframe, or parent is not accessible. Skipping parent communication setup.'
+      '[Live editor] Not running inside an iframe, or parent is not accessible. Skipping parent communication setup.'
     );
   }
 })();

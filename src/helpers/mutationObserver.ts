@@ -3,6 +3,7 @@ import { sendMessageToParent } from './sendMessageToParent';
 import { ContentNode, OUTGOING_MESSAGE_TYPES } from '../contants';
 import { getConfig } from './config';
 import { markContentStorageElements } from './markContentStorageElements';
+import { throttle } from './misc';
 
 function isInternalWrapper(node: Node): boolean {
   if (node.nodeType !== Node.ELEMENT_NODE) {
@@ -22,8 +23,6 @@ export function processDomChanges() {
     const nodes = findContentNodesInPage();
 
     if (nodes.length > 0) {
-      console.log('BEFORE SEND FOUND TEXT NODES', window.memoryMap);
-      console.log('nodes!!!!!', nodes);
       const structuredContent = nodes
         .map((node): ContentNode | null => {
           // Check if it's a Text node with content
@@ -60,19 +59,17 @@ export function processDomChanges() {
 
             return data;
           }
-          console.log('(node as Element).tagName', (node as Element).tagName);
+
           if (node.nodeType === Node.ELEMENT_NODE) {
             const element = node as HTMLElement;
 
             if (element.tagName === 'IMG') {
               const imgElement = element as HTMLImageElement;
 
-              console.log('SRC', imgElement.src);
-              console.log('MEMORY', window.memoryMap);
               const keys = Array.from(
                 window.memoryMap?.get(imgElement.src)?.ids || []
               );
-              console.log('KEYS', keys);
+
               if (keys.length === 0) {
                 return null;
               }
@@ -119,7 +116,7 @@ export function processDomChanges() {
         })
         .filter(Boolean) as ContentNode[];
 
-      console.log('structuredContent', structuredContent);
+      console.log('[Live editor] Sending nodes to parent:', structuredContent);
       sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
         contentNodes: structuredContent,
       });
@@ -130,7 +127,7 @@ export function processDomChanges() {
       markContentStorageElements(structuredContent, highlight);
 
       console.log(
-        'Significant mutation detected. Processing and sending text nodes.'
+        '[Live editor] Significant mutation detected. Processing and sending text nodes.'
       );
     }
   } catch (error) {
@@ -138,7 +135,7 @@ export function processDomChanges() {
   }
 }
 
-export const mutationObserverCallback: MutationCallback = (
+const mutationObserverCallbackOriginal: MutationCallback = (
   mutationsList,
   observer
 ) => {
@@ -238,7 +235,11 @@ export const mutationObserverCallback: MutationCallback = (
   }
 };
 
-// Your configuration remains the same.
+export const mutationObserverCallback = throttle(
+  mutationObserverCallbackOriginal,
+  1000
+);
+
 export const mutationObserverConfig: MutationObserverInit = {
   childList: true,
   subtree: true,

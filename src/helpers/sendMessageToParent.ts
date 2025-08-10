@@ -10,6 +10,6 @@ export const sendMessageToParent = <T extends OutgoingMessageType>(
   };
 
   // Replace "*" with the specific target origin of the parent application for enhanced security.
-  console.log('CDN Script: Sending message to parent:', msg);
-  window.parent.postMessage(msg, '*');
+  console.log('[Live editor] Sending message to parent:', msg);
+  window.parent.postMessage(msg, 'https://contentstorage.app');
 };

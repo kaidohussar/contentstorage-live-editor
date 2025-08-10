@@ -22,7 +22,7 @@ export const applyConfig = () => {
 
 export const setAndApplyInitialConfig = (c: LiveEditorConfig) => {
   setConfig(c);
-  console.log('INITIAL CONFIG', c);
+  console.log('[Live editor] Set initial config:', c);
   if (c.highlightEditableContent) {
     markContentStorageElements([], true);
   }

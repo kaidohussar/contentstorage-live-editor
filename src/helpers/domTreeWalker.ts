@@ -125,6 +125,6 @@ export const findContentNodesInPage = (): Node[] => {
   while ((currentNode = treeWalker.nextNode())) {
     textNodes.push(currentNode);
   }
-  console.log('TEXTNODEES', textNodes);
+
   return textNodes;
 };

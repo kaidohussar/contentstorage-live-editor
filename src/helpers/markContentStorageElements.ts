@@ -143,7 +143,6 @@ const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
 
     if (htmlElement.tagName === 'IMG') {
       const imgElement = htmlElement as HTMLImageElement;
-      console.log('content', content);
       // Find if this image node's src matches any of the items to be marked.
       matchedItem = content.find(
         (item) => item.type === 'image' && item.url === imgElement.src
@@ -212,7 +211,7 @@ export const markContentStorageElements = (
     // Then highlight all elements with data-content-key
     const elements =
       document.querySelectorAll<HTMLElement>('[data-content-key]');
-    console.log('elements', elements);
+
     elements.forEach((element) => {
       const contentStorageId = element.dataset.contentKey;
       if (!contentStorageId || !shouldHighlight) {
@@ -332,7 +331,6 @@ export const hideContentstorageElementsHighlight = () => {
 };
 
 export const showPendingChanges = (pendingChanges: PendingChangeSimple[]) => {
-  console.log('pendingChanges', pendingChanges);
   pendingChanges.forEach((change) => {
     const elem = document.querySelector(
       `[data-content-key="${change.contentId}"]`
