@@ -2,8 +2,11 @@ import { findContentNodesInPage } from './domTreeWalker';
 import { sendMessageToParent } from './sendMessageToParent';
 import { ContentNode, OUTGOING_MESSAGE_TYPES } from '../contants';
 import { getConfig } from './config';
-import { markContentStorageElements } from './markContentStorageElements';
-import { throttle } from './misc';
+import {
+  markContentStorageElements,
+  showPendingChanges,
+} from './markContentStorageElements';
+import { getPendingChanges, throttle } from './misc';
 
 function isInternalWrapper(node: Node): boolean {
   if (node.nodeType !== Node.ELEMENT_NODE) {
@@ -122,9 +125,14 @@ export function processDomChanges() {
       });
 
       const shouldHighlight = getConfig().highlightEditableContent;
+      const shouldShowPendingChanges = getConfig().showPendingChanges;
       const highlight = shouldHighlight === undefined ? true : shouldHighlight;
 
       markContentStorageElements(structuredContent, highlight);
+
+      if (shouldShowPendingChanges) {
+        showPendingChanges(getPendingChanges());
+      }
 
       console.log(
         '[Live editor] Significant mutation detected. Processing and sending text nodes.'

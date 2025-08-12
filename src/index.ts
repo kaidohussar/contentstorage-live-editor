@@ -17,6 +17,7 @@ import {
 } from './helpers/mutationObserver';
 import { sendMessageToParent } from './helpers/sendMessageToParent';
 import { PendingChangeSimple } from './types';
+import { clearPendingChanges, setPendingChanges } from './helpers/misc';
 
 (function () {
   const currentScript = document.currentScript as HTMLScriptElement;
@@ -123,15 +124,19 @@ import { PendingChangeSimple } from './types';
             if (
               event.data.type === INCOMING_MESSAGE_TYPES.SHOW_PENDING_CHANGES
             ) {
-              showPendingChanges(
-                event.data.payload.data as PendingChangeSimple[]
-              );
+              const pendingChangesData = event.data.payload
+                .data as PendingChangeSimple[];
+              setPendingChanges(pendingChangesData);
+              setConfig({ showPendingChanges: true });
+              showPendingChanges(pendingChangesData);
             }
 
             if (
               event.data.type === INCOMING_MESSAGE_TYPES.SHOW_ORIGINAL_CONTENT
             ) {
               showOriginalContent();
+              clearPendingChanges();
+              setConfig({ showPendingChanges: false });
             }
 
             // Process other messages here
