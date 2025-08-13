@@ -112,12 +112,25 @@ const applyCheckedAttribute = (node: Node): void => {
 const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
   // 1. If the current node is a text node, process it.
   if (element.nodeType === Node.TEXT_NODE && element.textContent?.trim()) {
-    // Find if this text node's content matches any of the items to be highlighted.
-    const matchedItem = content.find(
-      (item) =>
-        (item.type === 'text' || item.type === 'variation') &&
-        element.textContent?.includes(item.text)
-    );
+    // Check if the parent element already has a content key
+    const parentElement = element.parentElement;
+    const existingContentKey = parentElement?.getAttribute('data-content-key');
+    
+    let matchedItem: ContentNode | undefined;
+
+    if (existingContentKey) {
+      // If parent already has content key, find by content key to ensure consistency
+      matchedItem = content.find((item) => 
+        item.contentKey.includes(existingContentKey)
+      );
+    } else {
+      // Find if this text node's content matches any of the items to be highlighted.
+      matchedItem = content.find(
+        (item) =>
+          (item.type === 'text' || item.type === 'variation') &&
+          element.textContent?.includes(item.text)
+      );
+    }
 
     if (matchedItem) {
       // If a match is found, wrap it in the highlight span.
@@ -235,7 +248,10 @@ export const markContentStorageElements = (
       }
 
       // Ensure the content is valid and tracked
-      if (!contentValue || !window.memoryMap.has(contentValue)) {
+      // For elements showing pending changes, we should skip the contentValue check
+      // since the displayed text won't match the original text in memoryMap
+      const isShowingPendingChange = element.getAttribute('data-content-showing-pending-change');
+      if (!contentValue || (!isShowingPendingChange && !window.memoryMap.has(contentValue))) {
         return;
       }
 
@@ -381,7 +397,7 @@ export const showOriginalContent = () => {
         node.textContent &&
         node.textContent.trim().length > 0
       ) {
-        const textVal = Array.from(window.memoryMap).find(([key, data]) => {
+        const textVal = Array.from(window.memoryMap).find(([, data]) => {
           return data.ids.has(contentKey);
         });
 
