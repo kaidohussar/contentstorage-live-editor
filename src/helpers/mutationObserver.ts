@@ -7,6 +7,7 @@ import {
   showPendingChanges,
 } from './markContentStorageElements';
 import { getPendingChanges, throttle } from './misc';
+import { hasVariables, createVariablePattern } from './variableMatching';
 
 function isInternalWrapper(node: Node): boolean {
   if (node.nodeType !== Node.ELEMENT_NODE) {
@@ -31,6 +32,26 @@ export function processDomChanges() {
           // Check if it's a Text node with content
           if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
             let content = window.memoryMap?.get(node.textContent);
+
+            // If direct lookup fails, try variable-aware matching
+            if (!content) {
+
+              // Search through all template keys to find one that matches with variables
+              for (const [templateText, contentData] of window.memoryMap) {
+                if (hasVariables(templateText)) {
+                  try {
+                    const pattern = createVariablePattern(templateText);
+                    if (pattern.test(node.textContent.trim())) {
+                      content = contentData;
+                      break;
+                    }
+                  } catch {
+                    // Skip this template if regex fails
+                    continue;
+                  }
+                }
+              }
+            }
 
             const isShowingPendingChange = node.parentElement?.getAttribute(
               'data-content-showing-pending-change'

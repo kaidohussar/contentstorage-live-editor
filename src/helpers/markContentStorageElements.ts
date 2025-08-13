@@ -2,33 +2,88 @@ import { sendMessageToParent } from './sendMessageToParent';
 import { ContentNode, OUTGOING_MESSAGE_TYPES } from '../contants';
 import { PendingChangeSimple } from '../types';
 import { isImageElement } from './typeguards';
+import { hasVariables, createVariablePattern, matchesWithVariables } from './variableMatching';
 
 let isProcessing = false;
+
+// Style utility functions for CSS protection
+const applyProtectedStyles = (element: HTMLElement, styles: Record<string, string>) => {
+  Object.entries(styles).forEach(([property, value]) => {
+    element.style.setProperty(property, value, 'important');
+  });
+};
+
+const resetInheritedStyles = (element: HTMLElement) => {
+  const resetStyles = {
+    'font-family': 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    'font-size': '14px',
+    'font-weight': 'normal',
+    'font-style': 'normal',
+    'line-height': 'normal',
+    'color': 'inherit',
+    'text-decoration': 'none',
+    'text-transform': 'none',
+    'letter-spacing': 'normal',
+    'text-align': 'left',
+    'text-indent': '0',
+    'white-space': 'normal',
+    'word-spacing': 'normal',
+    'margin': '0',
+    'padding': '0',
+    'border': 'none',
+    'outline': 'none',
+    'background': 'transparent',
+    'box-sizing': 'border-box',
+    'vertical-align': 'baseline',
+    'text-shadow': 'none',
+    'box-shadow': 'none',
+    'opacity': '1',
+    'visibility': 'visible',
+    'overflow': 'visible',
+    'transform': 'none',
+    'transition': 'none',
+    'animation': 'none'
+  };
+  applyProtectedStyles(element, resetStyles);
+};
 
 const editButton = (contentId: string) => {
   // Create the button element
   const button = document.createElement('button');
   button.setAttribute('id', 'contentstorage-element-button');
-  button.type = 'button'; // Good practice for buttons not submitting forms
+  button.type = 'button';
 
-  // Style the button directly using inline styles
-  button.style.width = '30px';
-  button.style.height = '30px';
-  button.style.position = 'absolute';
-  button.style.top = '-25px';
-  button.style.right = '-15px';
+  // Reset all inherited styles first
+  resetInheritedStyles(button);
 
-  // Styles previously in .edit-button class
-  button.style.cursor = 'pointer';
-  button.style.border = '1px solid #C0C0CA';
-  button.style.backgroundColor = '#EAF1F9';
-  button.style.borderRadius = '30px';
-  button.style.display = 'flex';
-  button.style.justifyContent = 'center';
-  button.style.alignItems = 'center';
-  button.style.padding = '0px';
-  button.style.color = '#222225';
-  button.style.zIndex = '9999';
+  // Apply protected button styles
+  const buttonStyles = {
+    'width': '30px',
+    'height': '30px',
+    'position': 'absolute',
+    'top': '-25px',
+    'right': '-15px',
+    'cursor': 'pointer',
+    'border': '1px solid #C0C0CA',
+    'background-color': '#EAF1F9',
+    'border-radius': '30px',
+    'display': 'flex',
+    'justify-content': 'center',
+    'align-items': 'center',
+    'padding': '0',
+    'color': '#222225',
+    'z-index': '9999',
+    'min-width': '30px',
+    'min-height': '30px',
+    'max-width': '30px',
+    'max-height': '30px',
+    'flex-shrink': '0',
+    'user-select': 'none',
+    'pointer-events': 'auto',
+    'font-size': '0',
+    'line-height': '1'
+  };
+  applyProtectedStyles(button, buttonStyles);
 
   button.onclick = (event) => {
     event.stopPropagation();
@@ -44,15 +99,74 @@ const editButton = (contentId: string) => {
   svg.setAttribute('xmlns', svgNS);
   svg.setAttribute('viewBox', '0 0 20 20');
   svg.setAttribute('fill', 'currentColor');
-  // Apply styles directly to SVG if needed, though width/height attributes are often sufficient
-  svg.setAttribute('width', '16'); // Icon size, slightly smaller than button
+  svg.setAttribute('width', '16');
   svg.setAttribute('height', '16');
+  
+  // Apply comprehensive protected SVG styles
+  const svgStyles = {
+    'display': 'block',
+    'pointer-events': 'none',
+    'user-select': 'none',
+    'flex-shrink': '0',
+    'width': '16px',
+    'height': '16px',
+    'min-width': '16px',
+    'min-height': '16px',
+    'max-width': '16px',
+    'max-height': '16px',
+    'margin': '0',
+    'padding': '0',
+    'border': 'none',
+    'outline': 'none',
+    'background': 'transparent',
+    'box-sizing': 'border-box',
+    'vertical-align': 'baseline',
+    'fill': 'currentColor',
+    'stroke': 'none',
+    'stroke-width': '0',
+    'opacity': '1',
+    'visibility': 'visible',
+    'overflow': 'visible',
+    'transform': 'none',
+    'transition': 'none',
+    'animation': 'none',
+    'filter': 'none',
+    'clip-path': 'none',
+    'mask': 'none'
+  };
+  applyProtectedStyles(svg as any, svgStyles);
 
   const path = document.createElementNS(svgNS, 'path');
   path.setAttribute(
     'd',
     'M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z'
   );
+  
+  // Apply comprehensive protected path styles
+  const pathStyles = {
+    'fill': 'currentColor',
+    'stroke': 'none',
+    'stroke-width': '0',
+    'margin': '0',
+    'padding': '0',
+    'border': 'none',
+    'outline': 'none',
+    'background': 'transparent',
+    'box-sizing': 'border-box',
+    'vertical-align': 'baseline',
+    'opacity': '1',
+    'visibility': 'visible',
+    'transform': 'none',
+    'transition': 'none',
+    'animation': 'none',
+    'filter': 'none',
+    'clip-path': 'none',
+    'mask': 'none',
+    'pointer-events': 'none',
+    'user-select': 'none'
+  };
+  applyProtectedStyles(path as any, pathStyles);
+  
   svg.appendChild(path);
   button.appendChild(svg);
 
@@ -71,6 +185,15 @@ const applyContentKey = (node: Node, contentKey: string): void => {
     const span = document.createElement('span');
     span.setAttribute('data-content-key', contentKey);
     span.textContent = node.textContent;
+    
+    // Apply minimal protected styling to content spans
+    // Only protect essential properties to avoid breaking text flow
+    const contentSpanStyles = {
+      'display': 'inline',
+      'box-sizing': 'border-box'
+    };
+    applyProtectedStyles(span, contentSpanStyles);
+    
     node.parentNode?.replaceChild(span, node);
   }
   // Handle Element Nodes (like IMG) by setting the attribute directly
@@ -109,6 +232,7 @@ const applyCheckedAttribute = (node: Node): void => {
   }
 };
 
+
 const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
   // 1. If the current node is a text node, process it.
   if (element.nodeType === Node.TEXT_NODE && element.textContent?.trim()) {
@@ -125,10 +249,12 @@ const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
       );
     } else {
       // Find if this text node's content matches any of the items to be highlighted.
+      // Use variable-aware matching to handle content with variables like {days}, {name}, etc.
       matchedItem = content.find(
         (item) =>
           (item.type === 'text' || item.type === 'variation') &&
-          element.textContent?.includes(item.text)
+          element.textContent &&
+          matchesWithVariables(element.textContent, item.text)
       );
     }
 
@@ -169,9 +295,9 @@ const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
       if (contentValue) {
         matchedItem = content.find((item) => {
           if (item.type === 'text') {
-            return item.text === contentValue;
+            return matchesWithVariables(contentValue, item.text);
           } else if (item.type === 'variation') {
-            return item.variation === contentValue;
+            return matchesWithVariables(contentValue, item.variation || item.text);
           }
         });
       }
@@ -251,8 +377,37 @@ export const markContentStorageElements = (
       // For elements showing pending changes, we should skip the contentValue check
       // since the displayed text won't match the original text in memoryMap
       const isShowingPendingChange = element.getAttribute('data-content-showing-pending-change');
-      if (!contentValue || (!isShowingPendingChange && !window.memoryMap.has(contentValue))) {
+      
+      if (!contentValue) {
         return;
+      }
+      
+      // Skip memoryMap check for pending changes, or check if content exists in memoryMap
+      // For content with variables, we need to do a more sophisticated check
+      if (!isShowingPendingChange) {
+        let contentFound = window.memoryMap.has(contentValue);
+        
+        // If direct lookup fails and this is text content, try variable-aware matching
+        if (!contentFound && !isImg && !isInput) {
+          for (const [templateText] of window.memoryMap) {
+            if (hasVariables(templateText)) {
+              try {
+                const pattern = createVariablePattern(templateText);
+                if (pattern.test(contentValue.trim())) {
+                  contentFound = true;
+                  break;
+                }
+              } catch {
+                // Skip this template if regex fails
+                continue;
+              }
+            }
+          }
+        }
+        
+        if (!contentFound) {
+          return;
+        }
       }
 
       // Create a wrapper for IMG and INPUT elements to help with positioning
@@ -268,22 +423,44 @@ export const markContentStorageElements = (
         } else {
           wrapper = document.createElement('div');
           wrapper.setAttribute('id', wrapperElemId);
-          wrapper.style.position = 'relative';
-          wrapper.style.display = 'inline-block'; // Fit the content
+          
+          // Reset inherited styles for wrapper
+          resetInheritedStyles(wrapper);
+          
+          // Apply protected wrapper styles
+          const wrapperStyles = {
+            'position': 'relative',
+            'display': 'inline-block',
+            'vertical-align': 'baseline',
+            'max-width': 'none',
+            'max-height': 'none',
+            'min-width': '0',
+            'min-height': '0'
+          };
+          applyProtectedStyles(wrapper, wrapperStyles);
 
           if (element.parentNode) {
             element.parentNode.insertBefore(wrapper, element);
             wrapper.appendChild(element);
           }
         }
-        wrapper.style.outline = `1px solid #1791FF`;
-        wrapper.style.borderRadius = isImg ? '2px' : '4px';
+        
+        // Apply highlight outline with protection
+        const highlightStyles = {
+          'outline': '1px solid #1791FF',
+          'border-radius': isImg ? '2px' : '4px',
+          'outline-offset': '0'
+        };
+        applyProtectedStyles(wrapper, highlightStyles);
       } else {
-        // For text nodes (spans), style them directly
-        element.style.outline = `1px solid #1791FF`;
-        element.style.outlineOffset = '4px';
-        element.style.borderRadius = '2px';
-        element.style.position = 'relative';
+        // For text nodes (spans), style them directly with protection
+        const spanHighlightStyles = {
+          'outline': '1px solid #1791FF',
+          'outline-offset': '4px',
+          'border-radius': '2px',
+          'position': 'relative'
+        };
+        applyProtectedStyles(element, spanHighlightStyles);
       }
 
       const parentForControls = wrapper || element;
@@ -296,18 +473,37 @@ export const markContentStorageElements = (
       const label = document.createElement('div');
       label.setAttribute('id', 'contentstorage-element-label');
       label.textContent = contentStorageId;
-      label.style.position = 'absolute';
+      
+      // Reset inherited styles for label
+      resetInheritedStyles(label);
+      
+      // Apply protected label styles
+      const labelStyles: Record<string, string> = {
+        'position': 'absolute',
+        'left': 'calc(100% + 10px)',
+        'color': '#1791FF',
+        'font-size': '10px',
+        'font-weight': '400',
+        'font-family': 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        'line-height': '1.2',
+        'z-index': '9999',
+        'pointer-events': 'none',
+        'user-select': 'none',
+        'white-space': 'nowrap',
+        'text-align': 'left',
+        'display': 'block',
+        'max-width': 'none',
+        'width': 'auto',
+        'height': 'auto'
+      };
+      
       if (isInput || isImg) {
-        label.style.bottom = '0px';
+        labelStyles['bottom'] = '0px';
       } else {
-        label.style.top = '4px';
+        labelStyles['top'] = '4px';
       }
-      label.style.left = 'calc(100% + 10px)';
-      label.style.color = '#1791FF';
-      label.style.fontSize = '10px';
-      label.style.fontWeight = '400';
-      label.style.zIndex = '9999';
-      label.style.pointerEvents = 'none';
+      
+      applyProtectedStyles(label, labelStyles);
 
       const button = editButton(contentStorageId);
 
