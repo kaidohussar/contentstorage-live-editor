@@ -35,7 +35,6 @@ export function processDomChanges() {
 
             // If direct lookup fails, try variable-aware matching
             if (!content) {
-
               // Search through all template keys to find one that matches with variables
               for (const [templateText, contentData] of window.memoryMap) {
                 if (hasVariables(templateText)) {
@@ -181,7 +180,6 @@ const mutationObserverCallbackOriginal: MutationCallback = (
   );
 
   for (const mutation of mutationsList) {
-    // 1. Ignore mutations that are clearly our own span additions.
     if (mutation.type === 'childList') {
       const isWrapperAddition = Array.from(mutation.addedNodes).some(
         isInternalWrapper
@@ -204,7 +202,6 @@ const mutationObserverCallbackOriginal: MutationCallback = (
       }
     }
 
-    // 2. Attribute change filtering logic (your existing code is good).
     if (mutation.type === 'attributes') {
       if (STYLE_RELATED_ATTRIBUTES.includes(mutation.attributeName || '')) {
         const targetElement = mutation.target as HTMLElement;
@@ -214,7 +211,6 @@ const mutationObserverCallbackOriginal: MutationCallback = (
       }
     }
 
-    // 3. Ignore mutations within explicitly ignored parent elements (your existing code is good).
     const nodeToCheckIdPath: Node | null = mutation.target;
     if (nodeToCheckIdPath) {
       let currentElement: HTMLElement | null =
@@ -232,7 +228,7 @@ const mutationObserverCallbackOriginal: MutationCallback = (
           // This part of the logic can be simplified, but for now, we ensure it works.
           // We mark this path to be skipped.
           significantMutationDetected = false; // Override any previous detection
-          break; // Exit the while loop
+          break;
         }
         currentElement = currentElement.parentElement;
       }
@@ -242,12 +238,10 @@ const mutationObserverCallbackOriginal: MutationCallback = (
       }
     }
 
-    // If a mutation passes all filters, we consider it significant.
     significantMutationDetected = true;
-    break; // One significant mutation is enough.
+    break;
   }
 
-  // If a significant, external mutation was detected, run the processing logic.
   if (significantMutationDetected) {
     observer.disconnect();
 
@@ -273,7 +267,4 @@ export const mutationObserverConfig: MutationObserverInit = {
   childList: true,
   subtree: true,
   attributes: true,
-  // No need to filter attributes here if you do it in the callback
-  // but it can be a micro-optimization.
-  // attributeFilter: ['data-content-key', 'style', 'class'],
 };

@@ -2,12 +2,18 @@ import { sendMessageToParent } from './sendMessageToParent';
 import { ContentNode, OUTGOING_MESSAGE_TYPES } from '../contants';
 import { PendingChangeSimple } from '../types';
 import { isImageElement } from './typeguards';
-import { hasVariables, createVariablePattern, matchesWithVariables } from './variableMatching';
+import {
+  hasVariables,
+  createVariablePattern,
+  matchesWithVariables,
+} from './variableMatching';
 
 let isProcessing = false;
 
-// Style utility functions for CSS protection
-const applyProtectedStyles = (element: HTMLElement, styles: Record<string, string>) => {
+const applyProtectedStyles = (
+  element: HTMLElement,
+  styles: Record<string, string>
+) => {
   Object.entries(styles).forEach(([property, value]) => {
     element.style.setProperty(property, value, 'important');
   });
@@ -15,12 +21,13 @@ const applyProtectedStyles = (element: HTMLElement, styles: Record<string, strin
 
 const resetInheritedStyles = (element: HTMLElement) => {
   const resetStyles = {
-    'font-family': 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    'font-family':
+      'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     'font-size': '14px',
     'font-weight': 'normal',
     'font-style': 'normal',
     'line-height': 'normal',
-    'color': 'inherit',
+    color: 'inherit',
     'text-decoration': 'none',
     'text-transform': 'none',
     'letter-spacing': 'normal',
@@ -28,21 +35,21 @@ const resetInheritedStyles = (element: HTMLElement) => {
     'text-indent': '0',
     'white-space': 'normal',
     'word-spacing': 'normal',
-    'margin': '0',
-    'padding': '0',
-    'border': 'none',
-    'outline': 'none',
-    'background': 'transparent',
+    margin: '0',
+    padding: '0',
+    border: 'none',
+    outline: 'none',
+    background: 'transparent',
     'box-sizing': 'border-box',
     'vertical-align': 'baseline',
     'text-shadow': 'none',
     'box-shadow': 'none',
-    'opacity': '1',
-    'visibility': 'visible',
-    'overflow': 'visible',
-    'transform': 'none',
-    'transition': 'none',
-    'animation': 'none'
+    opacity: '1',
+    visibility: 'visible',
+    overflow: 'visible',
+    transform: 'none',
+    transition: 'none',
+    animation: 'none',
   };
   applyProtectedStyles(element, resetStyles);
 };
@@ -58,20 +65,20 @@ const editButton = (contentId: string) => {
 
   // Apply protected button styles
   const buttonStyles = {
-    'width': '30px',
-    'height': '30px',
-    'position': 'absolute',
-    'top': '-25px',
-    'right': '-15px',
-    'cursor': 'pointer',
-    'border': '1px solid #C0C0CA',
+    width: '30px',
+    height: '30px',
+    position: 'absolute',
+    top: '-25px',
+    right: '-15px',
+    cursor: 'pointer',
+    border: '1px solid #C0C0CA',
     'background-color': '#EAF1F9',
     'border-radius': '30px',
-    'display': 'flex',
+    display: 'flex',
     'justify-content': 'center',
     'align-items': 'center',
-    'padding': '0',
-    'color': '#222225',
+    padding: '0',
+    color: '#222225',
     'z-index': '9999',
     'min-width': '30px',
     'min-height': '30px',
@@ -81,7 +88,7 @@ const editButton = (contentId: string) => {
     'user-select': 'none',
     'pointer-events': 'auto',
     'font-size': '0',
-    'line-height': '1'
+    'line-height': '1',
   };
   applyProtectedStyles(button, buttonStyles);
 
@@ -101,38 +108,37 @@ const editButton = (contentId: string) => {
   svg.setAttribute('fill', 'currentColor');
   svg.setAttribute('width', '16');
   svg.setAttribute('height', '16');
-  
-  // Apply comprehensive protected SVG styles
+
   const svgStyles = {
-    'display': 'block',
+    display: 'block',
     'pointer-events': 'none',
     'user-select': 'none',
     'flex-shrink': '0',
-    'width': '16px',
-    'height': '16px',
+    width: '16px',
+    height: '16px',
     'min-width': '16px',
     'min-height': '16px',
     'max-width': '16px',
     'max-height': '16px',
-    'margin': '0',
-    'padding': '0',
-    'border': 'none',
-    'outline': 'none',
-    'background': 'transparent',
+    margin: '0',
+    padding: '0',
+    border: 'none',
+    outline: 'none',
+    background: 'transparent',
     'box-sizing': 'border-box',
     'vertical-align': 'baseline',
-    'fill': 'currentColor',
-    'stroke': 'none',
+    fill: 'currentColor',
+    stroke: 'none',
     'stroke-width': '0',
-    'opacity': '1',
-    'visibility': 'visible',
-    'overflow': 'visible',
-    'transform': 'none',
-    'transition': 'none',
-    'animation': 'none',
-    'filter': 'none',
+    opacity: '1',
+    visibility: 'visible',
+    overflow: 'visible',
+    transform: 'none',
+    transition: 'none',
+    animation: 'none',
+    filter: 'none',
     'clip-path': 'none',
-    'mask': 'none'
+    mask: 'none',
   };
   applyProtectedStyles(svg as any, svgStyles);
 
@@ -141,32 +147,31 @@ const editButton = (contentId: string) => {
     'd',
     'M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z'
   );
-  
-  // Apply comprehensive protected path styles
+
   const pathStyles = {
-    'fill': 'currentColor',
-    'stroke': 'none',
+    fill: 'currentColor',
+    stroke: 'none',
     'stroke-width': '0',
-    'margin': '0',
-    'padding': '0',
-    'border': 'none',
-    'outline': 'none',
-    'background': 'transparent',
+    margin: '0',
+    padding: '0',
+    border: 'none',
+    outline: 'none',
+    background: 'transparent',
     'box-sizing': 'border-box',
     'vertical-align': 'baseline',
-    'opacity': '1',
-    'visibility': 'visible',
-    'transform': 'none',
-    'transition': 'none',
-    'animation': 'none',
-    'filter': 'none',
+    opacity: '1',
+    visibility: 'visible',
+    transform: 'none',
+    transition: 'none',
+    animation: 'none',
+    filter: 'none',
     'clip-path': 'none',
-    'mask': 'none',
+    mask: 'none',
     'pointer-events': 'none',
-    'user-select': 'none'
+    'user-select': 'none',
   };
   applyProtectedStyles(path as any, pathStyles);
-  
+
   svg.appendChild(path);
   button.appendChild(svg);
 
@@ -174,7 +179,6 @@ const editButton = (contentId: string) => {
 };
 
 const applyContentKey = (node: Node, contentKey: string): void => {
-  // Handle Text Nodes by wrapping them
   if (node.nodeType === Node.TEXT_NODE && node.textContent) {
     const parent = node.parentElement;
     // Avoid re-wrapping if parent already has the correct key
@@ -185,15 +189,15 @@ const applyContentKey = (node: Node, contentKey: string): void => {
     const span = document.createElement('span');
     span.setAttribute('data-content-key', contentKey);
     span.textContent = node.textContent;
-    
+
     // Apply minimal protected styling to content spans
     // Only protect essential properties to avoid breaking text flow
     const contentSpanStyles = {
-      'display': 'inline',
-      'box-sizing': 'border-box'
+      display: 'inline',
+      'box-sizing': 'border-box',
     };
     applyProtectedStyles(span, contentSpanStyles);
-    
+
     node.parentNode?.replaceChild(span, node);
   }
   // Handle Element Nodes (like IMG) by setting the attribute directly
@@ -232,19 +236,17 @@ const applyCheckedAttribute = (node: Node): void => {
   }
 };
 
-
 const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
-  // 1. If the current node is a text node, process it.
   if (element.nodeType === Node.TEXT_NODE && element.textContent?.trim()) {
     // Check if the parent element already has a content key
     const parentElement = element.parentElement;
     const existingContentKey = parentElement?.getAttribute('data-content-key');
-    
+
     let matchedItem: ContentNode | undefined;
 
     if (existingContentKey) {
       // If parent already has content key, find by content key to ensure consistency
-      matchedItem = content.find((item) => 
+      matchedItem = content.find((item) =>
         item.contentKey.includes(existingContentKey)
       );
     } else {
@@ -297,7 +299,10 @@ const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
           if (item.type === 'text') {
             return matchesWithVariables(contentValue, item.text);
           } else if (item.type === 'variation') {
-            return matchesWithVariables(contentValue, item.variation || item.text);
+            return matchesWithVariables(
+              contentValue,
+              item.variation || item.text
+            );
           }
         });
       }
@@ -376,17 +381,19 @@ export const markContentStorageElements = (
       // Ensure the content is valid and tracked
       // For elements showing pending changes, we should skip the contentValue check
       // since the displayed text won't match the original text in memoryMap
-      const isShowingPendingChange = element.getAttribute('data-content-showing-pending-change');
-      
+      const isShowingPendingChange = element.getAttribute(
+        'data-content-showing-pending-change'
+      );
+
       if (!contentValue) {
         return;
       }
-      
+
       // Skip memoryMap check for pending changes, or check if content exists in memoryMap
       // For content with variables, we need to do a more sophisticated check
       if (!isShowingPendingChange) {
         let contentFound = window.memoryMap.has(contentValue);
-        
+
         // If direct lookup fails and this is text content, try variable-aware matching
         if (!contentFound && !isImg && !isInput) {
           for (const [templateText] of window.memoryMap) {
@@ -404,7 +411,7 @@ export const markContentStorageElements = (
             }
           }
         }
-        
+
         if (!contentFound) {
           return;
         }
@@ -423,19 +430,19 @@ export const markContentStorageElements = (
         } else {
           wrapper = document.createElement('div');
           wrapper.setAttribute('id', wrapperElemId);
-          
+
           // Reset inherited styles for wrapper
           resetInheritedStyles(wrapper);
-          
+
           // Apply protected wrapper styles
           const wrapperStyles = {
-            'position': 'relative',
-            'display': 'inline-block',
+            position: 'relative',
+            display: 'inline-block',
             'vertical-align': 'baseline',
             'max-width': 'none',
             'max-height': 'none',
             'min-width': '0',
-            'min-height': '0'
+            'min-height': '0',
           };
           applyProtectedStyles(wrapper, wrapperStyles);
 
@@ -444,21 +451,21 @@ export const markContentStorageElements = (
             wrapper.appendChild(element);
           }
         }
-        
+
         // Apply highlight outline with protection
         const highlightStyles = {
-          'outline': '1px solid #1791FF',
+          outline: '1px solid #1791FF',
           'border-radius': isImg ? '2px' : '4px',
-          'outline-offset': '0'
+          'outline-offset': '0',
         };
         applyProtectedStyles(wrapper, highlightStyles);
       } else {
         // For text nodes (spans), style them directly with protection
         const spanHighlightStyles = {
-          'outline': '1px solid #1791FF',
+          outline: '1px solid #1791FF',
           'outline-offset': '4px',
           'border-radius': '2px',
-          'position': 'relative'
+          position: 'relative',
         };
         applyProtectedStyles(element, spanHighlightStyles);
       }
@@ -473,36 +480,37 @@ export const markContentStorageElements = (
       const label = document.createElement('div');
       label.setAttribute('id', 'contentstorage-element-label');
       label.textContent = contentStorageId;
-      
+
       // Reset inherited styles for label
       resetInheritedStyles(label);
-      
+
       // Apply protected label styles
       const labelStyles: Record<string, string> = {
-        'position': 'absolute',
-        'left': 'calc(100% + 10px)',
-        'color': '#1791FF',
+        position: 'absolute',
+        left: 'calc(100% + 10px)',
+        color: '#1791FF',
         'font-size': '10px',
         'font-weight': '400',
-        'font-family': 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        'font-family':
+          'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         'line-height': '1.2',
         'z-index': '9999',
         'pointer-events': 'none',
         'user-select': 'none',
         'white-space': 'nowrap',
         'text-align': 'left',
-        'display': 'block',
+        display: 'block',
         'max-width': 'none',
-        'width': 'auto',
-        'height': 'auto'
+        width: 'auto',
+        height: 'auto',
       };
-      
+
       if (isInput || isImg) {
         labelStyles['bottom'] = '0px';
       } else {
         labelStyles['top'] = '4px';
       }
-      
+
       applyProtectedStyles(label, labelStyles);
 
       const button = editButton(contentStorageId);

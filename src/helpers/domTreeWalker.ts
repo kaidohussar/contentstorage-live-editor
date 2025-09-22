@@ -30,7 +30,6 @@ export const findContentNodesInPage = (): Node[] => {
     NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
     {
       acceptNode: (node: Node) => {
-        // --- Handle ELEMENT_NODE (IMG and INPUT) ---
         if (node.nodeType === Node.ELEMENT_NODE) {
           const element = node as HTMLElement;
 
@@ -52,12 +51,10 @@ export const findContentNodesInPage = (): Node[] => {
               currentAncestor = currentAncestor.parentElement;
             }
 
-            // Element itself should not be an unsupported type.
             if (isUnsupported(element)) {
               return NodeFilter.FILTER_REJECT;
             }
 
-            // Element must be visible.
             if (!isElementVisible(element)) {
               return NodeFilter.FILTER_REJECT;
             }
@@ -67,7 +64,6 @@ export const findContentNodesInPage = (): Node[] => {
               return NodeFilter.FILTER_REJECT;
             }
 
-            // If all checks pass, accept the element.
             return NodeFilter.FILTER_ACCEPT;
           }
 
@@ -75,9 +71,7 @@ export const findContentNodesInPage = (): Node[] => {
           return NodeFilter.FILTER_SKIP;
         }
 
-        // --- Handle TEXT_NODE ---
         if (node.nodeType === Node.TEXT_NODE) {
-          // Skip empty or whitespace-only text nodes
           if (!node.textContent?.trim()) {
             return NodeFilter.FILTER_SKIP;
           }
@@ -87,7 +81,6 @@ export const findContentNodesInPage = (): Node[] => {
             return NodeFilter.FILTER_REJECT;
           }
 
-          // --- Ancestor and Parent-based Filters for Text Nodes ONLY ---
           let currentAncestor: HTMLElement | null = parent;
           while (currentAncestor && currentAncestor !== document.body) {
             if (currentAncestor.hasAttribute('data-content-checked')) {
@@ -96,12 +89,10 @@ export const findContentNodesInPage = (): Node[] => {
             currentAncestor = currentAncestor.parentElement;
           }
 
-          // Skip if the parent is an unsupported element type.
           if (isUnsupported(parent)) {
             return NodeFilter.FILTER_REJECT;
           }
 
-          // Skip if the parent element is not visible.
           if (!isElementVisible(parent)) {
             return NodeFilter.FILTER_REJECT;
           }
@@ -111,11 +102,9 @@ export const findContentNodesInPage = (): Node[] => {
             return NodeFilter.FILTER_REJECT;
           }
 
-          // If all checks pass for the text node, accept it.
           return NodeFilter.FILTER_ACCEPT;
         }
 
-        // For any other node type, skip it.
         return NodeFilter.FILTER_SKIP;
       },
     }
