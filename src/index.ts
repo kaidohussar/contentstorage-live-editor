@@ -18,6 +18,7 @@ import {
 import { sendMessageToParent } from './helpers/sendMessageToParent';
 import { PendingChangeSimple } from './types';
 import { clearPendingChanges, setPendingChanges } from './helpers/misc';
+import { handleScreenshotRequest } from './helpers/screenshot';
 
 (function () {
   const currentScript = document.currentScript as HTMLScriptElement;
@@ -137,6 +138,10 @@ import { clearPendingChanges, setPendingChanges } from './helpers/misc';
               showOriginalContent();
               clearPendingChanges();
               setConfig({ showPendingChanges: false });
+            }
+
+            if (event.data.type === INCOMING_MESSAGE_TYPES.REQUEST_SCREENSHOT) {
+              handleScreenshotRequest();
             }
 
             // Process other messages here

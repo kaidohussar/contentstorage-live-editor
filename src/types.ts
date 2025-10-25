@@ -3,3 +3,14 @@ export type PendingChangeSimple = {
   langCountry: string;
   value: unknown;
 };
+
+export type ScreenshotResponsePayload =
+  | {
+      screenshotDataUrl: string;
+      success: true;
+    }
+  | {
+      screenshotDataUrl: '';
+      success: false;
+      error: string;
+    };

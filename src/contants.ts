@@ -1,4 +1,4 @@
-import { PendingChangeSimple } from './types';
+import { PendingChangeSimple, ScreenshotResponsePayload } from './types';
 
 export type OutgoingMessageType =
   (typeof OUTGOING_MESSAGE_TYPES)[keyof typeof OUTGOING_MESSAGE_TYPES];
@@ -15,12 +15,14 @@ export const INCOMING_MESSAGE_TYPES = {
   SET_HIDE_HIGHLIGHT_CONTENT: 'contentstorage-set-hide-highlight-content',
   SHOW_PENDING_CHANGES: 'contentstorage-show-pending-changes',
   SHOW_ORIGINAL_CONTENT: 'contentstorage-show-original-content',
+  REQUEST_SCREENSHOT: 'contentstorage-request-screenshot',
 } as const;
 
 export const OUTGOING_MESSAGE_TYPES = {
   HANDSHAKE_INITIATE: 'contentstorage-handshake-initiate',
   CLICK_CONTENT_ITEM_EDIT_BTN: 'contentstorage-click-item-edit-btn',
   FOUND_CONTENT_NODES: 'contentstorage-found-content-nodes',
+  SCREENSHOT_RESPONSE: 'contentstorage-screenshot-response',
 } as const;
 
 export type MessagePayloadMap = {
@@ -31,10 +33,12 @@ export type MessagePayloadMap = {
   [OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES]: {
     contentNodes: ContentNode[];
   };
+  [OUTGOING_MESSAGE_TYPES.SCREENSHOT_RESPONSE]: ScreenshotResponsePayload;
 };
 
 export type IncomingMessagePayloadMap = {
   [INCOMING_MESSAGE_TYPES.SHOW_PENDING_CHANGES]: PendingChangeSimple[];
+  [INCOMING_MESSAGE_TYPES.REQUEST_SCREENSHOT]: null;
 };
 
 export const COMMUNICATION_TIMEOUT_MS = 5000; // 5 seconds
