@@ -8,6 +8,7 @@ import {
 } from './markContentStorageElements';
 import { getPendingChanges, throttle } from './misc';
 import { hasVariables, createVariablePattern } from './variableMatching';
+import { stripHtmlTags, normalizeWhitespace } from './htmlUtils';
 
 function isInternalWrapper(node: Node): boolean {
   if (node.nodeType !== Node.ELEMENT_NODE) {
@@ -33,20 +34,52 @@ export function processDomChanges() {
           if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
             let content = window.memoryMap?.get(node.textContent);
 
-            // If direct lookup fails, try variable-aware matching
+            // If direct lookup fails, try advanced matching strategies
             if (!content) {
-              // Search through all template keys to find one that matches with variables
+              const nodeText = node.textContent.trim();
+              const normalizedNodeText = normalizeWhitespace(nodeText);
+
+              // Search through all template keys to find a match
               for (const [templateText, contentData] of window.memoryMap) {
+                // Strategy 1: Try variable-aware matching with original template
+                // This handles cases like "Welcome {{userName}}!" matching "Welcome John!"
                 if (hasVariables(templateText)) {
                   try {
                     const pattern = createVariablePattern(templateText);
-                    if (pattern.test(node.textContent.trim())) {
+                    if (pattern.test(normalizedNodeText)) {
                       content = contentData;
                       break;
                     }
                   } catch {
                     // Skip this template if regex fails
                     continue;
+                  }
+                }
+
+                // Strategy 2: Strip HTML tags and try matching again
+                // This handles cases like "<strong>{{userName}}</strong>" in templates
+                const strippedTemplate = stripHtmlTags(templateText);
+                const normalizedStrippedTemplate = normalizeWhitespace(strippedTemplate);
+
+                // Only try HTML stripping if the stripped version is different
+                if (strippedTemplate !== templateText) {
+                  // Check if stripped template has variables
+                  if (hasVariables(strippedTemplate)) {
+                    try {
+                      const pattern = createVariablePattern(strippedTemplate);
+                      if (pattern.test(normalizedNodeText)) {
+                        content = contentData;
+                        break;
+                      }
+                    } catch {
+                      continue;
+                    }
+                  } else {
+                    // Simple text match for stripped HTML without variables
+                    if (normalizedNodeText.includes(normalizedStrippedTemplate)) {
+                      content = contentData;
+                      break;
+                    }
                   }
                 }
               }

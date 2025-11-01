@@ -14,7 +14,7 @@ const getScreenshotOptions = () => ({
   scale: window.devicePixelRatio,
   backgroundColor: '#ffffff',
   features: {
-    restoreScrollPosition: false, // Don't include scrolled content outside viewport
+    restoreScrollPosition: true, // Preserve current scroll positions of nested containers
     copyScrollbar: false, // Don't include scrollbars in the screenshot
   },
 });

@@ -7,8 +7,37 @@ import {
   createVariablePattern,
   matchesWithVariables,
 } from './variableMatching';
+import { stripHtmlTags, normalizeWhitespace } from './htmlUtils';
 
 let isProcessing = false;
+
+/**
+ * Enhanced text matching that handles HTML templates
+ * Tries multiple strategies:
+ * 1. Direct matchesWithVariables (fast path for non-HTML templates)
+ * 2. Strip HTML from item.text and match against DOM text
+ */
+const matchesWithHtmlSupport = (
+  domText: string,
+  itemText: string
+): boolean => {
+  // Strategy 1: Try direct matching first (fast path)
+  if (matchesWithVariables(domText, itemText)) {
+    return true;
+  }
+
+  // Strategy 2: Strip HTML tags and try matching again
+  const strippedItemText = stripHtmlTags(itemText);
+  const normalizedDomText = normalizeWhitespace(domText);
+  const normalizedItemText = normalizeWhitespace(strippedItemText);
+
+  // Only proceed if stripping made a difference
+  if (strippedItemText !== itemText) {
+    return matchesWithVariables(normalizedDomText, normalizedItemText);
+  }
+
+  return false;
+};
 
 const applyProtectedStyles = (
   element: HTMLElement,
@@ -251,12 +280,14 @@ const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
       );
     } else {
       // Find if this text node's content matches any of the items to be highlighted.
-      // Use variable-aware matching to handle content with variables like {days}, {name}, etc.
+      // Use enhanced matching to handle:
+      // - Variables like {days}, {name}, {{userName}}, {{count}}, etc.
+      // - HTML tags in templates like <strong>{{userName}}</strong>
       matchedItem = content.find(
         (item) =>
           (item.type === 'text' || item.type === 'variation') &&
           element.textContent &&
-          matchesWithVariables(element.textContent, item.text)
+          matchesWithHtmlSupport(element.textContent, item.text)
       );
     }
 
@@ -297,9 +328,9 @@ const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
       if (contentValue) {
         matchedItem = content.find((item) => {
           if (item.type === 'text') {
-            return matchesWithVariables(contentValue, item.text);
+            return matchesWithHtmlSupport(contentValue, item.text);
           } else if (item.type === 'variation') {
-            return matchesWithVariables(
+            return matchesWithHtmlSupport(
               contentValue,
               item.variation || item.text
             );
@@ -394,19 +425,43 @@ export const markContentStorageElements = (
       if (!isShowingPendingChange) {
         let contentFound = window.memoryMap.has(contentValue);
 
-        // If direct lookup fails and this is text content, try variable-aware matching
+        // If direct lookup fails and this is text content, try enhanced matching
         if (!contentFound && !isImg && !isInput) {
+          const normalizedContentValue = normalizeWhitespace(contentValue.trim());
+
           for (const [templateText] of window.memoryMap) {
+            // Strategy 1: Try variable-aware matching with original template
             if (hasVariables(templateText)) {
               try {
                 const pattern = createVariablePattern(templateText);
-                if (pattern.test(contentValue.trim())) {
+                if (pattern.test(normalizedContentValue)) {
                   contentFound = true;
                   break;
                 }
               } catch {
                 // Skip this template if regex fails
                 continue;
+              }
+            }
+
+            // Strategy 2: Strip HTML and try matching
+            const strippedTemplate = stripHtmlTags(templateText);
+            if (strippedTemplate !== templateText) {
+              const normalizedStripped = normalizeWhitespace(strippedTemplate);
+
+              if (hasVariables(strippedTemplate)) {
+                try {
+                  const pattern = createVariablePattern(strippedTemplate);
+                  if (pattern.test(normalizedContentValue)) {
+                    contentFound = true;
+                    break;
+                  }
+                } catch {
+                  continue;
+                }
+              } else if (normalizedContentValue.includes(normalizedStripped)) {
+                contentFound = true;
+                break;
               }
             }
           }
