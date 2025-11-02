@@ -76,7 +76,7 @@ export function processDomChanges() {
                     }
                   } else {
                     // Simple text match for stripped HTML without variables
-                    if (normalizedNodeText.includes(normalizedStrippedTemplate)) {
+                    if (normalizedStrippedTemplate.includes(normalizedNodeText)) {
                       content = contentData;
                       break;
                     }

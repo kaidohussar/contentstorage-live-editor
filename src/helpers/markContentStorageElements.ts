@@ -265,6 +265,49 @@ const applyCheckedAttribute = (node: Node): void => {
   }
 };
 
+/**
+ * Checks if we should skip wrapping this text node because an ancestor or sibling
+ * already has been marked with the same content key.
+ * This prevents duplicate highlighting of text fragments from the same content.
+ *
+ * @param node The text node to check
+ * @param contentKey The content key we're trying to apply
+ * @returns true if we should skip wrapping this node
+ */
+const shouldSkipTextNodeWrapping = (node: Node, contentKey: string): boolean => {
+  const parent = node.parentElement;
+  if (!parent) return false;
+
+  // Check if parent already has the content key - most common case
+  if (parent.getAttribute('data-content-key') === contentKey) {
+    return true;
+  }
+
+  // Check if any sibling element (previously wrapped text node) has this content key
+  // This handles cases where text nodes at the same level have already been processed
+  for (const child of Array.from(parent.children)) {
+    if (child.getAttribute('data-content-key') === contentKey) {
+      return true; // A sibling was already wrapped, skip this one
+    }
+  }
+
+  // Check ancestors up to a reasonable depth
+  // This prevents duplicate marking when text nodes are in nested structures
+  let ancestor = parent.parentElement;
+  let depth = 0;
+  const MAX_DEPTH = 5; // Don't traverse too far up the DOM tree
+
+  while (ancestor && ancestor !== document.body && depth < MAX_DEPTH) {
+    if (ancestor.getAttribute('data-content-key') === contentKey) {
+      return true;
+    }
+    ancestor = ancestor.parentElement;
+    depth++;
+  }
+
+  return false;
+};
+
 const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
   if (element.nodeType === Node.TEXT_NODE && element.textContent?.trim()) {
     // Check if the parent element already has a content key
@@ -292,14 +335,19 @@ const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
     }
 
     if (matchedItem) {
-      // If a match is found, wrap it in the highlight span.
-      applyContentKey(
-        element,
-        matchedItem.contentKey[matchedItem.contentKey.length - 1]
-      );
+      const contentKey = matchedItem.contentKey[matchedItem.contentKey.length - 1];
+
+      // Check if we should skip wrapping this text node to prevent duplicates
+      if (!shouldSkipTextNodeWrapping(element, contentKey)) {
+        // If a match is found and no ancestor/sibling already has this key, wrap it
+        applyContentKey(element, contentKey);
+      }
     } else {
       // If no match is found, wrap it in the "checked" span.
-      applyCheckedAttribute(element);
+      // Only if not already part of marked content
+      if (!shouldSkipTextNodeWrapping(element, '')) {
+        applyCheckedAttribute(element);
+      }
     }
     // Once processed, we don't need to do anything else with this node.
     return;
@@ -459,7 +507,7 @@ export const markContentStorageElements = (
                 } catch {
                   continue;
                 }
-              } else if (normalizedContentValue.includes(normalizedStripped)) {
+              } else if (normalizedStripped.includes(normalizedContentValue)) {
                 contentFound = true;
                 break;
               }

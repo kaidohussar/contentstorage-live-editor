@@ -1,7 +1,15 @@
-import { domToBlob } from 'modern-screenshot';
+import { toBlob } from 'html-to-image';
 import { OUTGOING_MESSAGE_TYPES } from '../contants';
 import { sendMessageToParent } from './sendMessageToParent';
 import { ScreenshotResponsePayload } from '../types';
+
+/**
+ * Stores scroll position information for an element
+ */
+interface ScrollPosition {
+  scrollTop: number;
+  scrollLeft: number;
+}
 
 /**
  * Get screenshot options configured for capturing only the visible viewport area
@@ -10,14 +18,64 @@ const getScreenshotOptions = () => ({
   width: window.innerWidth,
   height: window.innerHeight,
   quality: 0.95,
-  type: 'image/png' as const,
-  scale: window.devicePixelRatio,
+  pixelRatio: window.devicePixelRatio, // Renamed from 'scale'
   backgroundColor: '#ffffff',
-  features: {
-    restoreScrollPosition: true, // Preserve current scroll positions of nested containers
-    copyScrollbar: false, // Don't include scrollbars in the screenshot
+  style: {
+    overflow: 'hidden', // Hide scrollbars in screenshot
   },
 });
+
+/**
+ * Saves scroll positions of all scrolled elements in the page
+ * @returns Map of elements to their scroll positions
+ */
+const saveScrollPositions = (): Map<Element, ScrollPosition> => {
+  const scrollPositions = new Map<Element, ScrollPosition>();
+  const allElements = document.querySelectorAll('*');
+
+  allElements.forEach((element) => {
+    // Only save if element has scrolled content
+    if (element.scrollTop > 0 || element.scrollLeft > 0) {
+      scrollPositions.set(element, {
+        scrollTop: element.scrollTop,
+        scrollLeft: element.scrollLeft,
+      });
+    }
+  });
+
+  console.log(
+    `[Live editor] Saved scroll positions for ${scrollPositions.size} elements`
+  );
+  return scrollPositions;
+};
+
+/**
+ * Resets all scrolled elements to top-left position (0, 0)
+ * @param scrollPositions Map of elements that have scroll positions
+ */
+const resetScrollPositions = (
+  scrollPositions: Map<Element, ScrollPosition>
+): void => {
+  scrollPositions.forEach((_, element) => {
+    element.scrollTop = 0;
+    element.scrollLeft = 0;
+  });
+  console.log('[Live editor] Reset all scroll positions to 0');
+};
+
+/**
+ * Restores previously saved scroll positions
+ * @param scrollPositions Map of elements to their original scroll positions
+ */
+const restoreScrollPositions = (
+  scrollPositions: Map<Element, ScrollPosition>
+): void => {
+  scrollPositions.forEach((position, element) => {
+    element.scrollTop = position.scrollTop;
+    element.scrollLeft = position.scrollLeft;
+  });
+  console.log('[Live editor] Restored scroll positions');
+};
 
 /**
  * Temporarily hides edit buttons (NOT labels) from the page
@@ -52,21 +110,35 @@ const showEditButtons = (buttons: HTMLElement[]): void => {
 export const handleScreenshotRequest = async (): Promise<void> => {
   console.log('[Live editor] Request received from Contentstorage');
 
-  // Store reference to hidden buttons for restoration
+  // Store references for cleanup
   let hiddenButtons: HTMLElement[] = [];
+  let scrollPositions: Map<Element, ScrollPosition> = new Map();
 
   try {
-    // Step 1: Hide edit buttons (labels stay visible)
+    // Step 1: Save current scroll positions (CRITICAL for scroll preservation)
+    console.log('[Live editor] Saving scroll positions...');
+    scrollPositions = saveScrollPositions();
+
+    // Step 2: Reset scroll positions to top (required for consistent screenshots)
+    console.log('[Live editor] Resetting scroll positions...');
+    resetScrollPositions(scrollPositions);
+
+    // Step 3: Hide edit buttons (labels stay visible)
     console.log('[Live editor] Hiding edit buttons...');
     hiddenButtons = hideEditButtons();
 
-    // Step 2: Capture screenshot (only visible viewport area)
+    // Step 4: Capture screenshot (only visible viewport area)
     console.log('[Live editor] Capturing visible viewport area');
     const options = getScreenshotOptions();
     console.log(
       `[Live editor] Viewport dimensions: ${options.width}x${options.height}`
     );
-    const blob = await domToBlob(document.body, options);
+    const blob = await toBlob(document.body, options);
+
+    // Check if blob was created successfully
+    if (!blob) {
+      throw new Error('Failed to generate screenshot blob');
+    }
 
     console.log(
       '[Live editor] Captured successfully, converting to data URL...'
@@ -77,11 +149,15 @@ export const handleScreenshotRequest = async (): Promise<void> => {
       'KB'
     );
 
-    // Step 3: Restore edit buttons
+    // Step 5: Restore edit buttons
     console.log('[Live editor] Restoring edit buttons...');
     showEditButtons(hiddenButtons);
 
-    // Step 4: Convert blob to data URL
+    // Step 6: Restore scroll positions (CRITICAL for user experience)
+    console.log('[Live editor] Restoring scroll positions...');
+    restoreScrollPositions(scrollPositions);
+
+    // Step 7: Convert blob to data URL
     const reader = new FileReader();
 
     reader.onloadend = () => {
@@ -109,10 +185,15 @@ export const handleScreenshotRequest = async (): Promise<void> => {
   } catch (error) {
     console.error('[Live editor] Error capturing:', error);
 
-    // Make sure to restore buttons even if capture fails
+    // Make sure to restore buttons and scroll positions even if capture fails
     if (hiddenButtons.length > 0) {
       console.log('[Live editor] Restoring edit buttons after error...');
       showEditButtons(hiddenButtons);
+    }
+
+    if (scrollPositions.size > 0) {
+      console.log('[Live editor] Restoring scroll positions after error...');
+      restoreScrollPositions(scrollPositions);
     }
 
     const errorPayload: ScreenshotResponsePayload = {
