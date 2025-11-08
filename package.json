@@ -1,11 +1,12 @@
 {
   "name": "contentstorage-live-editor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "",
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "build": "rollup -c",
+    "build": "node scripts/increment-version.js && rollup -c",
+    "build:no-version": "rollup -c",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
