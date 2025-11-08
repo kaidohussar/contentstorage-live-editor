@@ -27,6 +27,9 @@ export function processDomChanges() {
     // applyConfig(); // Assuming this is part of your process
     const nodes = findContentNodesInPage();
 
+    // Track processed parent elements to avoid duplicates when text nodes are fragmented by HTML tags
+    const processedParents = new Set<HTMLElement>();
+
     // Log memoryMap content for debugging
     console.log('[Live editor] memoryMap content:', {
       size: window.memoryMap?.size || 0,
@@ -44,23 +47,33 @@ export function processDomChanges() {
         .map((node): ContentNode | null => {
           // Check if it's a Text node with content
           if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
+            // Skip if we've already processed this parent element
+            if (node.parentElement && processedParents.has(node.parentElement)) {
+              return null;
+            }
+
             let content = window.memoryMap?.get(node.textContent);
             let matchedTemplateText = node.textContent; // Track the template text
 
-            // If direct lookup fails, try exact matching with renderTemplate
-            if (!content) {
-              const normalizedNodeText = normalizeWhitespace(node.textContent.trim());
+            // If direct lookup fails, try exact matching with renderTemplate using parent's textContent
+            if (!content && node.parentElement) {
+              const parentText = node.parentElement.textContent?.trim();
+              if (parentText) {
+                const normalizedParentText = normalizeWhitespace(parentText);
 
-              // Search through all templates and do exact matching
-              for (const [templateText, contentData] of window.memoryMap) {
-                // Render template (handles variables + HTML stripping + whitespace normalization)
-                const rendered = renderTemplate(templateText, contentData.variables);
+                // Search through all templates and do exact matching
+                for (const [templateText, contentData] of window.memoryMap) {
+                  // Render template (handles variables + HTML stripping + whitespace normalization)
+                  const rendered = renderTemplate(templateText, contentData.variables);
 
-                // Exact comparison
-                if (rendered === normalizedNodeText) {
-                  content = contentData;
-                  matchedTemplateText = templateText; // Store the matched template
-                  break;
+                  // Exact comparison using parent's combined text
+                  if (rendered === normalizedParentText) {
+                    content = contentData;
+                    matchedTemplateText = templateText; // Store the matched template
+                    // Mark this parent as processed to avoid duplicate matches
+                    processedParents.add(node.parentElement);
+                    break;
+                  }
                 }
               }
             }
