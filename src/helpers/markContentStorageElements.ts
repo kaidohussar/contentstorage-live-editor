@@ -7,6 +7,13 @@ import { normalizeWhitespace, stripHtmlTags } from './htmlUtils';
 
 let isProcessing = false;
 
+// Map to track content keys → element info (for positioning edit buttons)
+interface ContentElementInfo {
+  element: HTMLElement;
+  contentValue: string; // The actual template/text that's in memoryMap
+}
+const contentKeyToElements = new Map<string, ContentElementInfo[]>();
+
 /**
  * Exact text matching using template rendering with variables
  * Renders the template with variables and does exact string comparison
@@ -28,6 +35,13 @@ const applyProtectedStyles = (
   Object.entries(styles).forEach(([property, value]) => {
     element.style.setProperty(property, value, 'important');
   });
+};
+
+const removeProtectedStyles = (
+  element: HTMLElement,
+  properties: string[]
+) => {
+  properties.forEach(prop => element.style.removeProperty(prop));
 };
 
 const resetInheritedStyles = (element: HTMLElement) => {
@@ -189,30 +203,24 @@ const editButton = (contentId: string) => {
   return button;
 };
 
-const applyContentKey = (node: Node, contentKey: string): void => {
+/**
+ * Track content element for positioning edit buttons (React-safe, no DOM modification of text nodes)
+ */
+const trackContentElement = (node: Node, contentKey: string, templateText?: string): void => {
   if (node.nodeType === Node.TEXT_NODE && node.textContent) {
-    const parent = node.parentElement;
-    // Avoid re-wrapping if parent already has the correct key
-    if (parent?.getAttribute('data-content-key') === contentKey) {
-      return;
+    // Track parent element for positioning edit buttons
+    const parentElement = node.parentElement;
+    if (parentElement && templateText) {
+      if (!contentKeyToElements.has(contentKey)) {
+        contentKeyToElements.set(contentKey, []);
+      }
+      contentKeyToElements.get(contentKey)!.push({
+        element: parentElement,
+        contentValue: templateText
+      });
     }
-
-    const span = document.createElement('span');
-    span.setAttribute('data-content-key', contentKey);
-    span.textContent = node.textContent;
-
-    // Apply minimal protected styling to content spans
-    // Only protect essential properties to avoid breaking text flow
-    const contentSpanStyles = {
-      display: 'inline',
-      'box-sizing': 'border-box',
-    };
-    applyProtectedStyles(span, contentSpanStyles);
-
-    node.parentNode?.replaceChild(span, node);
   }
-
-  // Handle Element Nodes (like IMG) by setting the attribute directly
+  // Handle Element Nodes (like IMG/INPUT) by setting the attribute directly
   else if (node.nodeType === Node.ELEMENT_NODE) {
     const element = node as Element;
     // Avoid reapplying the same attribute
@@ -220,31 +228,6 @@ const applyContentKey = (node: Node, contentKey: string): void => {
       return;
     }
     element.setAttribute('data-content-key', contentKey);
-  }
-};
-
-const applyCheckedAttribute = (node: Node): void => {
-  // Handle Text Nodes by wrapping them
-  if (node.nodeType === Node.TEXT_NODE && node.textContent) {
-    const parent = node.parentElement;
-    // Avoid re-wrapping
-    if (parent?.hasAttribute('data-content-checked')) {
-      return;
-    }
-
-    const span = document.createElement('span');
-    span.setAttribute('data-content-checked', 'true');
-    span.textContent = node.textContent;
-    node.parentNode?.replaceChild(span, node);
-  }
-  // Handle Element Nodes (like IMG) by setting the attribute directly
-  else if (node.nodeType === Node.ELEMENT_NODE) {
-    const element = node as Element;
-    // Avoid re-applying attribute
-    if (element.hasAttribute('data-content-checked')) {
-      return;
-    }
-    element.setAttribute('data-content-checked', 'true');
   }
 };
 
@@ -344,14 +327,15 @@ const findAndMarkElements = (
 
       // Check if we should skip wrapping this text node to prevent duplicates
       if (!shouldSkipTextNodeWrapping(element, contentKey)) {
-        // If a match is found and no ancestor/sibling already has this key, wrap it
-        applyContentKey(element, contentKey);
+        // If a match is found and no ancestor/sibling already has this key, track it
+        const templateText = matchedItem.type === 'image' ? undefined : matchedItem.text;
+        trackContentElement(element, contentKey, templateText);
       }
     } else {
-      // If no match is found, wrap it in the "checked" span.
+      // If no match is found, mark it as checked
       // Only if not already part of marked content
       if (!shouldSkipTextNodeWrapping(element, '')) {
-        applyCheckedAttribute(element);
+        trackContentElement(element, 'checked');
       }
     }
     // Once processed, we don't need to do anything else with this node.
@@ -410,14 +394,14 @@ const findAndMarkElements = (
     }
 
     if (matchedItem) {
-      // If a match is found, apply the contentKey directly to the element.
-      applyContentKey(
+      // If a match is found, track the element.
+      trackContentElement(
         element,
         matchedItem.contentKey[matchedItem.contentKey.length - 1]
       );
     } else {
-      // If no match is found, apply the "checked" attribute directly to the element.
-      applyCheckedAttribute(element);
+      // If no match is found, mark as checked.
+      trackContentElement(element, 'checked');
     }
     // Once processed, we don't need to do anything else with this node.
     return;
@@ -448,6 +432,9 @@ export const markContentStorageElements = (
   isProcessing = true;
 
   try {
+    // Clear previous tracking before applying new ones
+    contentKeyToElements.clear();
+
     // Create reverse lookup map for O(1) template lookups
     // Maps: HTML-stripped template → { original template with HTML, variables }
     const templateLookup = new Map<string, { template: string; variables?: Record<string, string | number | boolean> }>();
@@ -465,12 +452,35 @@ export const markContentStorageElements = (
       findAndMarkElements(document.body, content, templateLookup);
     }
 
-    // Then highlight all elements with data-content-key
-    const elements =
-      document.querySelectorAll<HTMLElement>('[data-content-key]');
+    // Then position edit buttons for highlighted content
+    // For text content: use contentKeyToElements map (CSS highlights don't create DOM elements)
+    // For IMG/INPUT: still use data-content-key attribute
+    const attributeElements = document.querySelectorAll<HTMLElement>('[data-content-key]');
 
-    elements.forEach((element) => {
-      const contentStorageId = element.dataset.contentKey;
+    // Combine elements from both sources
+    const allContentElements = new Map<string, HTMLElement>();
+
+    // Add IMG/INPUT elements that have data-content-key
+    attributeElements.forEach((element) => {
+      const key = element.dataset.contentKey;
+      if (key) {
+        allContentElements.set(key, element);
+      }
+    });
+
+    // Add text content elements from our tracking map
+    contentKeyToElements.forEach((infos, contentKey) => {
+      // Use the first parent element for this content key
+      const firstInfo = infos[0];
+      if (firstInfo && !allContentElements.has(contentKey)) {
+        // Store the element with a special marker so we know to use the tracked contentValue
+        const element = firstInfo.element;
+        element.setAttribute('data-tracked-content-value', firstInfo.contentValue);
+        allContentElements.set(contentKey, element);
+      }
+    });
+
+    allContentElements.forEach((element, contentStorageId) => {
       if (!contentStorageId || !shouldHighlight) {
         return;
       }
@@ -488,7 +498,15 @@ export const markContentStorageElements = (
         contentValue =
           inputElement.placeholder || inputElement.getAttribute('aria-label');
       } else {
-        contentValue = element.textContent;
+        // For text content, use the tracked template value if available
+        const trackedValue = element.getAttribute('data-tracked-content-value');
+        if (trackedValue) {
+          contentValue = trackedValue;
+          // Clean up the temporary attribute
+          element.removeAttribute('data-tracked-content-value');
+        } else {
+          contentValue = element.textContent;
+        }
       }
 
       // Ensure the content is valid and tracked
@@ -581,8 +599,9 @@ export const markContentStorageElements = (
           'outline-offset': '0',
         };
         applyProtectedStyles(wrapper, highlightStyles);
+        wrapper.setAttribute('data-contentstorage-styled', 'wrapper');
       } else {
-        // For text nodes (spans), style them directly with protection
+        // For text nodes (parent elements), style them directly with protection
         const spanHighlightStyles = {
           outline: '1px solid #1791FF',
           'outline-offset': '4px',
@@ -590,6 +609,7 @@ export const markContentStorageElements = (
           position: 'relative',
         };
         applyProtectedStyles(element, spanHighlightStyles);
+        element.setAttribute('data-contentstorage-styled', 'text');
       }
 
       const parentForControls = wrapper || element;
@@ -646,17 +666,46 @@ export const markContentStorageElements = (
 };
 
 export const hideContentstorageElementsHighlight = () => {
-  const elements = document.querySelectorAll<HTMLElement>('[data-content-key]');
+  // Clear tracking map
+  contentKeyToElements.clear();
+
+  // Remove styles from elements we styled (preserves pre-existing inline styles)
+  const styledElements = document.querySelectorAll<HTMLElement>('[data-contentstorage-styled]');
+  styledElements.forEach((element) => {
+    const styleType = element.getAttribute('data-contentstorage-styled');
+
+    if (styleType === 'text') {
+      // Remove text highlight styles
+      removeProtectedStyles(element, [
+        'outline',
+        'outline-offset',
+        'border-radius',
+        'position'
+      ]);
+    } else if (styleType === 'wrapper') {
+      // Remove wrapper styles
+      removeProtectedStyles(element, [
+        'outline',
+        'outline-offset',
+        'border-radius',
+        'position',
+        'display',
+        'vertical-align',
+        'max-width',
+        'max-height',
+        'min-width',
+        'min-height'
+      ]);
+    }
+
+    // Remove marker attribute
+    element.removeAttribute('data-contentstorage-styled');
+  });
+
+  // Clean up wrapper elements (unwrap IMG/INPUT)
   const wrappers = document.querySelectorAll<HTMLElement>(
     '#contentstorage-element-image-wrapper, #contentstorage-element-input-wrapper'
   );
-  const labels = document.querySelectorAll<HTMLElement>(
-    '#contentstorage-element-label'
-  );
-  const buttons = document.querySelectorAll<HTMLElement>(
-    '#contentstorage-element-button'
-  );
-
   wrappers.forEach((wrapper) => {
     const elementToUnwrap = wrapper.querySelector('img, input');
     const parent = wrapper.parentNode;
@@ -671,8 +720,15 @@ export const hideContentstorageElementsHighlight = () => {
     }
   });
 
-  elements.forEach((item) => (item.style.cssText = ''));
+  // Remove data-content-key attributes from IMG/INPUT elements
+  const elements = document.querySelectorAll<HTMLElement>('[data-content-key]');
+  elements.forEach((element) => {
+    element.removeAttribute('data-content-key');
+  });
 
+  // Remove labels and buttons
+  const labels = document.querySelectorAll<HTMLElement>('#contentstorage-element-label');
+  const buttons = document.querySelectorAll<HTMLElement>('#contentstorage-element-button');
   [...labels, ...buttons].forEach((item) => item.remove());
 };
 
