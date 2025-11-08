@@ -2,41 +2,23 @@ import { sendMessageToParent } from './sendMessageToParent';
 import { ContentNode, OUTGOING_MESSAGE_TYPES } from '../contants';
 import { PendingChangeSimple } from '../types';
 import { isImageElement } from './typeguards';
-import {
-  hasVariables,
-  createVariablePattern,
-  matchesWithVariables,
-} from './variableMatching';
-import { stripHtmlTags, normalizeWhitespace } from './htmlUtils';
+import { renderTemplate } from './variableMatching';
+import { normalizeWhitespace, stripHtmlTags } from './htmlUtils';
 
 let isProcessing = false;
 
 /**
- * Enhanced text matching that handles HTML templates
- * Tries multiple strategies:
- * 1. Direct matchesWithVariables (fast path for non-HTML templates)
- * 2. Strip HTML from item.text and match against DOM text
+ * Exact text matching using template rendering with variables
+ * Renders the template with variables and does exact string comparison
  */
-const matchesWithHtmlSupport = (
+const matchesExact = (
   domText: string,
-  itemText: string
+  itemText: string,
+  variables?: Record<string, string | number | boolean>
 ): boolean => {
-  // Strategy 1: Try direct matching first (fast path)
-  if (matchesWithVariables(domText, itemText)) {
-    return true;
-  }
-
-  // Strategy 2: Strip HTML tags and try matching again
-  const strippedItemText = stripHtmlTags(itemText);
-  const normalizedDomText = normalizeWhitespace(domText);
-  const normalizedItemText = normalizeWhitespace(strippedItemText);
-
-  // Only proceed if stripping made a difference
-  if (strippedItemText !== itemText) {
-    return matchesWithVariables(normalizedDomText, normalizedItemText);
-  }
-
-  return false;
+  const normalizedDomText = normalizeWhitespace(domText.trim());
+  const rendered = renderTemplate(itemText, variables);
+  return rendered === normalizedDomText;
 };
 
 const applyProtectedStyles = (
@@ -229,6 +211,7 @@ const applyContentKey = (node: Node, contentKey: string): void => {
 
     node.parentNode?.replaceChild(span, node);
   }
+
   // Handle Element Nodes (like IMG) by setting the attribute directly
   else if (node.nodeType === Node.ELEMENT_NODE) {
     const element = node as Element;
@@ -274,7 +257,10 @@ const applyCheckedAttribute = (node: Node): void => {
  * @param contentKey The content key we're trying to apply
  * @returns true if we should skip wrapping this node
  */
-const shouldSkipTextNodeWrapping = (node: Node, contentKey: string): boolean => {
+const shouldSkipTextNodeWrapping = (
+  node: Node,
+  contentKey: string
+): boolean => {
   const parent = node.parentElement;
   if (!parent) return false;
 
@@ -308,7 +294,11 @@ const shouldSkipTextNodeWrapping = (node: Node, contentKey: string): boolean => 
   return false;
 };
 
-const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
+const findAndMarkElements = (
+  element: Node,
+  content: ContentNode[],
+  templateLookup: Map<string, { template: string; variables?: Record<string, string | number | boolean> }>
+): void => {
   if (element.nodeType === Node.TEXT_NODE && element.textContent?.trim()) {
     // Check if the parent element already has a content key
     const parentElement = element.parentElement;
@@ -323,19 +313,34 @@ const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
       );
     } else {
       // Find if this text node's content matches any of the items to be highlighted.
-      // Use enhanced matching to handle:
-      // - Variables like {days}, {name}, {{userName}}, {{count}}, etc.
-      // - HTML tags in templates like <strong>{{userName}}</strong>
-      matchedItem = content.find(
-        (item) =>
+      // Use exact matching with variable rendering
+      // Use parent's textContent to get combined text (handles HTML tags that split text nodes)
+      const parentText = element.parentElement?.textContent?.trim();
+
+      matchedItem = content.find((item) => {
+        if (
           (item.type === 'text' || item.type === 'variation') &&
-          element.textContent &&
-          matchesWithHtmlSupport(element.textContent, item.text)
-      );
+          parentText
+        ) {
+          // O(1) lookup using pre-built template map
+          const templateData = templateLookup.get(item.text);
+          if (templateData) {
+            return matchesExact(
+              parentText,
+              templateData.template,
+              templateData.variables
+            );
+          }
+          // Fallback to matching without variables (shouldn't happen often)
+          return matchesExact(parentText, item.text);
+        }
+        return false;
+      });
     }
 
     if (matchedItem) {
-      const contentKey = matchedItem.contentKey[matchedItem.contentKey.length - 1];
+      const contentKey =
+        matchedItem.contentKey[matchedItem.contentKey.length - 1];
 
       // Check if we should skip wrapping this text node to prevent duplicates
       if (!shouldSkipTextNodeWrapping(element, contentKey)) {
@@ -376,13 +381,30 @@ const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
       if (contentValue) {
         matchedItem = content.find((item) => {
           if (item.type === 'text') {
-            return matchesWithHtmlSupport(contentValue, item.text);
+            // O(1) lookup using pre-built template map
+            const templateData = templateLookup.get(item.text);
+            if (templateData) {
+              return matchesExact(
+                contentValue,
+                templateData.template,
+                templateData.variables
+              );
+            }
+            return matchesExact(contentValue, item.text);
           } else if (item.type === 'variation') {
-            return matchesWithHtmlSupport(
-              contentValue,
-              item.variation || item.text
-            );
+            const textToMatch = item.variation || item.text;
+            // O(1) lookup using pre-built template map
+            const templateData = templateLookup.get(textToMatch);
+            if (templateData) {
+              return matchesExact(
+                contentValue,
+                templateData.template,
+                templateData.variables
+              );
+            }
+            return matchesExact(contentValue, textToMatch);
           }
+          return false;
         });
       }
     }
@@ -414,7 +436,7 @@ const findAndMarkElements = (element: Node, content: ContentNode[]): void => {
 
   const childNodes = Array.from(element.childNodes);
   for (const child of childNodes) {
-    findAndMarkElements(child, content);
+    findAndMarkElements(child, content, templateLookup);
   }
 };
 
@@ -426,9 +448,21 @@ export const markContentStorageElements = (
   isProcessing = true;
 
   try {
+    // Create reverse lookup map for O(1) template lookups
+    // Maps: HTML-stripped template → { original template with HTML, variables }
+    const templateLookup = new Map<string, { template: string; variables?: Record<string, string | number | boolean> }>();
+
+    for (const [templateText, contentData] of window.memoryMap) {
+      const strippedTemplate = stripHtmlTags(templateText);
+      templateLookup.set(strippedTemplate, {
+        template: templateText,
+        variables: contentData.variables
+      });
+    }
+
     // First, find and wrap matching text in spans with data-content-key
     if (content && content?.length > 0) {
-      findAndMarkElements(document.body, content);
+      findAndMarkElements(document.body, content, templateLookup);
     }
 
     // Then highlight all elements with data-content-key
@@ -473,44 +507,22 @@ export const markContentStorageElements = (
       if (!isShowingPendingChange) {
         let contentFound = window.memoryMap.has(contentValue);
 
-        // If direct lookup fails and this is text content, try enhanced matching
+        // If direct lookup fails and this is text content, try exact matching with renderTemplate
         if (!contentFound && !isImg && !isInput) {
-          const normalizedContentValue = normalizeWhitespace(contentValue.trim());
+          const normalizedContentValue = normalizeWhitespace(
+            contentValue.trim()
+          );
 
-          for (const [templateText] of window.memoryMap) {
-            // Strategy 1: Try variable-aware matching with original template
-            if (hasVariables(templateText)) {
-              try {
-                const pattern = createVariablePattern(templateText);
-                if (pattern.test(normalizedContentValue)) {
-                  contentFound = true;
-                  break;
-                }
-              } catch {
-                // Skip this template if regex fails
-                continue;
-              }
-            }
+          for (const [templateText, contentData] of window.memoryMap) {
+            // Render template with variables and do exact matching
+            const rendered = renderTemplate(
+              templateText,
+              contentData.variables
+            );
 
-            // Strategy 2: Strip HTML and try matching
-            const strippedTemplate = stripHtmlTags(templateText);
-            if (strippedTemplate !== templateText) {
-              const normalizedStripped = normalizeWhitespace(strippedTemplate);
-
-              if (hasVariables(strippedTemplate)) {
-                try {
-                  const pattern = createVariablePattern(strippedTemplate);
-                  if (pattern.test(normalizedContentValue)) {
-                    contentFound = true;
-                    break;
-                  }
-                } catch {
-                  continue;
-                }
-              } else if (normalizedStripped.includes(normalizedContentValue)) {
-                contentFound = true;
-                break;
-              }
+            if (rendered === normalizedContentValue) {
+              contentFound = true;
+              break;
             }
           }
         }
@@ -550,8 +562,15 @@ export const markContentStorageElements = (
           applyProtectedStyles(wrapper, wrapperStyles);
 
           if (element.parentNode) {
-            element.parentNode.insertBefore(wrapper, element);
-            wrapper.appendChild(element);
+            try {
+              element.parentNode.insertBefore(wrapper, element);
+              wrapper.appendChild(element);
+            } catch (error) {
+              console.debug(
+                '[Live editor] Failed to wrap image/input element:',
+                error
+              );
+            }
           }
         }
 
@@ -643,8 +662,12 @@ export const hideContentstorageElementsHighlight = () => {
     const parent = wrapper.parentNode;
 
     if (parent && elementToUnwrap) {
-      parent.insertBefore(elementToUnwrap, wrapper);
-      parent.removeChild(wrapper);
+      try {
+        parent.insertBefore(elementToUnwrap, wrapper);
+        parent.removeChild(wrapper);
+      } catch (error) {
+        console.debug('[Live editor] Failed to unwrap element:', error);
+      }
     }
   });
 

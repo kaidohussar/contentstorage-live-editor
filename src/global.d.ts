@@ -6,6 +6,7 @@ declare global {
         ids: Set<string>;
         type: 'text' | 'image' | 'variation';
         variation?: string;
+        variables?: Record<string, string | number | boolean>;
       }
     >;
     currentLanguageCode: string | null;

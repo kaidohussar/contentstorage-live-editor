@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { stripHtmlTags, normalizeWhitespace, getCleanTextContent } from './htmlUtils';
-import { hasVariables, createVariablePattern, matchesWithVariables } from './variableMatching';
+import { hasVariables, renderTemplate } from './variableMatching';
 
 describe('HTML Utils', () => {
   describe('stripHtmlTags', () => {
@@ -133,70 +133,45 @@ describe('Variable Matching Utils', () => {
     });
   });
 
-  describe('createVariablePattern', () => {
-    it('should create pattern for double curly brackets', () => {
-      const pattern = createVariablePattern('Welcome {{userName}}');
-      expect(pattern.test('Welcome John')).toBe(true);
-      expect(pattern.test('Welcome Alice')).toBe(true);
-      expect(pattern.test('Welcome Anyone123')).toBe(true);
+  describe('renderTemplate', () => {
+    it('should render template with double curly bracket variables', () => {
+      expect(renderTemplate('Welcome {{userName}}', { userName: 'John' })).toBe('Welcome John');
+      expect(renderTemplate('Welcome {{userName}}', { userName: 'Alice' })).toBe('Welcome Alice');
     });
 
-    it('should create pattern for single curly brackets', () => {
-      const pattern = createVariablePattern('Hello {name}');
-      expect(pattern.test('Hello World')).toBe(true);
-      expect(pattern.test('Hello Bob')).toBe(true);
+    it('should render template with single curly bracket variables', () => {
+      expect(renderTemplate('Hello {name}', { name: 'World' })).toBe('Hello World');
+      expect(renderTemplate('Hello {name}', { name: 'Bob' })).toBe('Hello Bob');
     });
 
     it('should handle multiple variables', () => {
-      const pattern = createVariablePattern('{{greeting}} {{userName}}');
-      expect(pattern.test('Hello John')).toBe(true);
-      expect(pattern.test('Hi Alice')).toBe(true);
-      expect(pattern.test('Welcome Bob')).toBe(true);
+      expect(renderTemplate('{{greeting}} {{userName}}', { greeting: 'Hello', userName: 'John' })).toBe('Hello John');
+      expect(renderTemplate('{{greeting}} {{userName}}', { greeting: 'Hi', userName: 'Alice' })).toBe('Hi Alice');
     });
 
-    it('should escape special regex characters', () => {
-      const pattern = createVariablePattern('Cost: ${{price}} (sale)');
-      expect(pattern.test('Cost: $99.99 (sale)')).toBe(true);
-      expect(pattern.test('Cost: $150 (sale)')).toBe(true);
+    it('should strip HTML tags from template', () => {
+      expect(renderTemplate('<strong>Hello</strong> {{name}}', { name: 'World' })).toBe('Hello World');
+      expect(renderTemplate('Welcome <strong>{{userName}}</strong>!', { userName: 'John' })).toBe('Welcome John!');
     });
 
-    it('should be case insensitive', () => {
-      const pattern = createVariablePattern('Welcome {{userName}}');
-      expect(pattern.test('WELCOME john')).toBe(true);
-      expect(pattern.test('welcome alice')).toBe(true);
+    it('should normalize whitespace', () => {
+      expect(renderTemplate('Hello   {{name}}', { name: 'World' })).toBe('Hello World');
+      expect(renderTemplate('Hello\n{{name}}', { name: 'World' })).toBe('Hello World');
     });
 
-    it('should prioritize double brackets over single', () => {
-      // When template has double brackets, it should match appropriately
-      const pattern = createVariablePattern('{{var}}');
-      expect(pattern.test('anything')).toBe(true);
-    });
-  });
-
-  describe('matchesWithVariables', () => {
-    it('should match text with variables using regex', () => {
-      expect(matchesWithVariables('Welcome John', 'Welcome {{userName}}')).toBe(true);
-      expect(matchesWithVariables('Welcome Alice', 'Welcome {{userName}}')).toBe(true);
+    it('should handle templates without variables', () => {
+      expect(renderTemplate('Hello World')).toBe('Hello World');
+      expect(renderTemplate('<strong>Hello</strong> World')).toBe('Hello World');
     });
 
-    it('should match text without variables using simple includes', () => {
-      expect(matchesWithVariables('Hello world', 'Hello')).toBe(true);
-      expect(matchesWithVariables('Hello world', 'world')).toBe(true);
-      expect(matchesWithVariables('Hello world', 'o w')).toBe(true);
+    it('should keep placeholder when variable is missing', () => {
+      expect(renderTemplate('Hello {{name}}')).toBe('Hello {{name}}');
+      expect(renderTemplate('Hello {{name}}', {})).toBe('Hello {{name}}');
     });
 
-    it('should NOT match when text does not match pattern', () => {
-      expect(matchesWithVariables('Goodbye John', 'Welcome {{userName}}')).toBe(false);
-      expect(matchesWithVariables('Hello world', 'Goodbye')).toBe(false);
-    });
-
-    it('should trim whitespace in comparison', () => {
-      expect(matchesWithVariables('  Welcome John  ', 'Welcome {{userName}}')).toBe(true);
-    });
-
-    it('should handle regex errors gracefully', () => {
-      // Even with potentially problematic input, should not throw
-      expect(() => matchesWithVariables('test', 'test {{var}}')).not.toThrow();
+    it('should replace double brackets before single brackets', () => {
+      // This ensures {{var}} is replaced before {var} to avoid partial replacements
+      expect(renderTemplate('{{userName}} and {userName}', { userName: 'John' })).toBe('John and John');
     });
   });
 });
@@ -240,13 +215,12 @@ describe('Integration Tests - Real-World Scenarios', () => {
   });
 
   describe('Test Case: Double curly brackets', () => {
-    it('should match template "Welcome {{userName}}" with dynamic content', () => {
+    it('should render template "Welcome {{userName}}" with dynamic content', () => {
       const template = 'Welcome {{userName}}';
 
-      expect(matchesWithVariables('Welcome John', template)).toBe(true);
-      expect(matchesWithVariables('Welcome Alice', template)).toBe(true);
-      expect(matchesWithVariables('Welcome Bob123', template)).toBe(true);
-      expect(matchesWithVariables('Goodbye John', template)).toBe(false);
+      expect(renderTemplate(template, { userName: 'John' })).toBe('Welcome John');
+      expect(renderTemplate(template, { userName: 'Alice' })).toBe('Welcome Alice');
+      expect(renderTemplate(template, { userName: 'Bob123' })).toBe('Welcome Bob123');
     });
 
     it('should detect variables correctly', () => {
@@ -255,42 +229,31 @@ describe('Integration Tests - Real-World Scenarios', () => {
   });
 
   describe('Test Case: Combined HTML and variables', () => {
-    it('should match "Hello <strong>{{userName}}</strong>"', () => {
+    it('should render "Hello <strong>{{userName}}</strong>" with HTML stripped', () => {
       const template = 'Hello <strong>{{userName}}</strong>';
 
-      // Step 1: Strip HTML
-      const cleanTemplate = stripHtmlTags(template);
-      expect(cleanTemplate).toBe('Hello {{userName}}');
-
-      // Step 2: Match with variable content
-      expect(matchesWithVariables('Hello John', cleanTemplate)).toBe(true);
-      expect(matchesWithVariables('Hello Alice', cleanTemplate)).toBe(true);
-      expect(matchesWithVariables('Goodbye John', cleanTemplate)).toBe(false);
+      // renderTemplate strips HTML and replaces variables
+      expect(renderTemplate(template, { userName: 'John' })).toBe('Hello John');
+      expect(renderTemplate(template, { userName: 'Alice' })).toBe('Hello Alice');
     });
 
     it('should handle complex nested HTML with variables', () => {
       const template = '<div><strong>Welcome {{firstName}}</strong> <em>{{lastName}}</em></div>';
-      const cleanTemplate = getCleanTextContent(template);
 
-      expect(cleanTemplate).toBe('Welcome {{firstName}} {{lastName}}');
-      expect(matchesWithVariables('Welcome John Doe', cleanTemplate)).toBe(true);
-      expect(matchesWithVariables('Welcome Alice Smith', cleanTemplate)).toBe(true);
+      expect(renderTemplate(template, { firstName: 'John', lastName: 'Doe' })).toBe('Welcome John Doe');
+      expect(renderTemplate(template, { firstName: 'Alice', lastName: 'Smith' })).toBe('Welcome Alice Smith');
     });
   });
 
   describe('Test Case: Simple text without HTML or variables', () => {
-    it('should match plain text exactly', () => {
+    it('should render plain text unchanged', () => {
       const template = 'Click here to continue';
 
       expect(hasVariables(template)).toBe(false);
-      expect(matchesWithVariables('Click here to continue', template)).toBe(true);
+      expect(renderTemplate(template)).toBe('Click here to continue');
 
-      // matchesWithVariables checks if domText includes template
-      // So the domText must contain the full template text
-      expect(matchesWithVariables('Please click here to continue now', template)).toBe(false);
-
-      // For the actual use case: check if template contains fragment (reversed)
-      expect(template.includes('Click here')).toBe(true);
+      // Exact matching - different text won't match
+      expect(renderTemplate('Click here to continue')).not.toBe('Please click here to continue now');
     });
   });
 
@@ -298,7 +261,7 @@ describe('Integration Tests - Real-World Scenarios', () => {
     it('should handle empty strings', () => {
       expect(stripHtmlTags('')).toBe('');
       expect(hasVariables('')).toBe(false);
-      expect(matchesWithVariables('', '')).toBe(true);
+      expect(renderTemplate('')).toBe('');
     });
 
     it('should handle strings with only HTML', () => {
@@ -308,37 +271,36 @@ describe('Integration Tests - Real-World Scenarios', () => {
 
     it('should handle special characters', () => {
       const template = 'Price: ${{amount}} (20% off!)';
-      const cleanTemplate = stripHtmlTags(template);
 
-      expect(matchesWithVariables('Price: $99.99 (20% off!)', cleanTemplate)).toBe(true);
+      expect(renderTemplate(template, { amount: '99.99' })).toBe('Price: $99.99 (20% off!)');
     });
 
     it('should handle very long variable values', () => {
       const template = 'Message: {{content}}';
-      const longContent = 'Message: ' + 'x'.repeat(1000);
+      const longValue = 'x'.repeat(1000);
 
-      expect(matchesWithVariables(longContent, template)).toBe(true);
+      expect(renderTemplate(template, { content: longValue })).toBe('Message: ' + longValue);
     });
 
     it('should handle mixed single and double bracket variables', () => {
       const template = 'Hello {firstName} {{lastName}}';
 
       expect(hasVariables(template)).toBe(true);
-      expect(matchesWithVariables('Hello John Doe', template)).toBe(true);
+      expect(renderTemplate(template, { firstName: 'John', lastName: 'Doe' })).toBe('Hello John Doe');
     });
 
     it('should handle Unicode and emoji', () => {
       const template = 'Welcome {{userName}} 👋';
 
-      expect(matchesWithVariables('Welcome John 👋', template)).toBe(true);
-      expect(matchesWithVariables('Welcome 你好 👋', template)).toBe(true);
+      expect(renderTemplate(template, { userName: 'John' })).toBe('Welcome John 👋');
+      expect(renderTemplate(template, { userName: '你好' })).toBe('Welcome 你好 👋');
     });
 
     it('should handle templates with only variables', () => {
       const template = '{{fullText}}';
 
-      expect(matchesWithVariables('Any text here', template)).toBe(true);
-      expect(matchesWithVariables('', template)).toBe(false); // Empty doesn't match (.+?)
+      expect(renderTemplate(template, { fullText: 'Any text here' })).toBe('Any text here');
+      expect(renderTemplate(template, { fullText: '' })).toBe('');
     });
 
     it('should handle adjacent HTML tags', () => {
@@ -374,6 +336,94 @@ describe('Integration Tests - Real-World Scenarios', () => {
       expect(cleanTemplate.includes('world')).toBe(true);
       expect(cleanTemplate.includes('this is')).toBe(true);
       expect(cleanTemplate.includes('amazing')).toBe(true);
+    });
+  });
+});
+
+describe('Integration Tests - React Trans Component', () => {
+  describe('Test Case: Trans with variables and custom components', () => {
+    it('should match DOM from Trans component to template with variables', () => {
+      // Template stored in memoryMap (what comes from backend)
+      const template = 'Welcome back, <strong>{{userName}}</strong>! You have <CustomLink>{{count}} new notifications</CustomLink>.';
+
+      // Variables provided in memoryMap
+      const variables = { userName: 'John Doe', count: '3' };
+
+      // DOM text that React Trans renders (what we find in the page)
+      const domText = 'Welcome back, John Doe! You have 3 new notifications.';
+
+      // Step 1: Render template with variables (what our code does)
+      const rendered = renderTemplate(template, variables);
+
+      // Step 2: Verify exact match
+      expect(rendered).toBe(domText);
+    });
+
+    it('should verify HTML-stripped template matches item.text format', () => {
+      // Template with HTML tags
+      const template = 'Welcome back, <strong>{{userName}}</strong>! You have <CustomLink>{{count}} new notifications</CustomLink>.';
+
+      // What we store in item.text (HTML-stripped template)
+      const expectedItemText = stripHtmlTags(template);
+
+      // Verify HTML is stripped but variables remain
+      expect(expectedItemText).toBe('Welcome back, {{userName}}! You have {{count}} new notifications.');
+      expect(expectedItemText).toContain('{{userName}}');
+      expect(expectedItemText).toContain('{{count}}');
+      expect(expectedItemText).not.toContain('<strong>');
+      expect(expectedItemText).not.toContain('<CustomLink>');
+    });
+
+    it('should simulate full matching workflow', () => {
+      // Simulating memoryMap entry
+      const memoryMapTemplate = 'Welcome back, <strong>{{userName}}</strong>! You have <CustomLink>{{count}} new notifications</CustomLink>.';
+      const memoryMapVariables = { userName: 'John Doe', count: '3' };
+
+      // What gets stored in ContentNode item.text
+      const itemText = stripHtmlTags(memoryMapTemplate);
+
+      // DOM text we find in the page
+      const domText = 'Welcome back, John Doe! You have 3 new notifications.';
+
+      // Matching workflow:
+      // 1. We have item.text (HTML-stripped template)
+      // 2. We need to find matching memoryMap entry to get variables
+      // 3. We render the template with variables
+      // 4. We compare against DOM text
+
+      // Simulate the lookup: stripHtmlTags(memoryMapTemplate) === item.text
+      const templateMatch = stripHtmlTags(memoryMapTemplate) === itemText;
+      expect(templateMatch).toBe(true);
+
+      // If matched, render the original template with variables
+      const rendered = renderTemplate(memoryMapTemplate, memoryMapVariables);
+
+      // Compare with DOM text
+      expect(rendered).toBe(domText);
+    });
+
+    it('should handle multiple variables in same template', () => {
+      const template = '{{greeting}} {{userName}}! You have {{count}} items in your cart.';
+      const variables = { greeting: 'Hello', userName: 'Alice', count: '5' };
+      const expected = 'Hello Alice! You have 5 items in your cart.';
+
+      expect(renderTemplate(template, variables)).toBe(expected);
+    });
+
+    it('should handle mixed single and double brackets with HTML', () => {
+      const template = '<div>Hello {firstName} {{lastName}}</div>';
+      const variables = { firstName: 'John', lastName: 'Doe' };
+      const expected = 'Hello John Doe';
+
+      expect(renderTemplate(template, variables)).toBe(expected);
+    });
+
+    it('should handle custom React components in template', () => {
+      const template = 'Click <CustomLink>here</CustomLink> to view your <Badge>{{count}}</Badge> notifications';
+      const variables = { count: '7' };
+      const expected = 'Click here to view your 7 notifications';
+
+      expect(renderTemplate(template, variables)).toBe(expected);
     });
   });
 });

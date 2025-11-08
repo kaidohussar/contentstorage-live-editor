@@ -7,8 +7,8 @@ import {
   showPendingChanges,
 } from './markContentStorageElements';
 import { getPendingChanges, throttle } from './misc';
-import { hasVariables, createVariablePattern } from './variableMatching';
-import { stripHtmlTags, normalizeWhitespace } from './htmlUtils';
+import { renderTemplate } from './variableMatching';
+import { normalizeWhitespace, stripHtmlTags } from './htmlUtils';
 
 function isInternalWrapper(node: Node): boolean {
   if (node.nodeType !== Node.ELEMENT_NODE) {
@@ -27,60 +27,40 @@ export function processDomChanges() {
     // applyConfig(); // Assuming this is part of your process
     const nodes = findContentNodesInPage();
 
+    // Log memoryMap content for debugging
+    console.log('[Live editor] memoryMap content:', {
+      size: window.memoryMap?.size || 0,
+      entries: Array.from(window.memoryMap?.entries() || []).map(([key, value]) => ({
+        template: key,
+        ids: Array.from(value.ids),
+        type: value.type,
+        variation: value.variation,
+        variables: value.variables,
+      })),
+    });
+
     if (nodes.length > 0) {
       const structuredContent = nodes
         .map((node): ContentNode | null => {
           // Check if it's a Text node with content
           if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
             let content = window.memoryMap?.get(node.textContent);
+            let matchedTemplateText = node.textContent; // Track the template text
 
-            // If direct lookup fails, try advanced matching strategies
+            // If direct lookup fails, try exact matching with renderTemplate
             if (!content) {
-              const nodeText = node.textContent.trim();
-              const normalizedNodeText = normalizeWhitespace(nodeText);
+              const normalizedNodeText = normalizeWhitespace(node.textContent.trim());
 
-              // Search through all template keys to find a match
+              // Search through all templates and do exact matching
               for (const [templateText, contentData] of window.memoryMap) {
-                // Strategy 1: Try variable-aware matching with original template
-                // This handles cases like "Welcome {{userName}}!" matching "Welcome John!"
-                if (hasVariables(templateText)) {
-                  try {
-                    const pattern = createVariablePattern(templateText);
-                    if (pattern.test(normalizedNodeText)) {
-                      content = contentData;
-                      break;
-                    }
-                  } catch {
-                    // Skip this template if regex fails
-                    continue;
-                  }
-                }
+                // Render template (handles variables + HTML stripping + whitespace normalization)
+                const rendered = renderTemplate(templateText, contentData.variables);
 
-                // Strategy 2: Strip HTML tags and try matching again
-                // This handles cases like "<strong>{{userName}}</strong>" in templates
-                const strippedTemplate = stripHtmlTags(templateText);
-                const normalizedStrippedTemplate = normalizeWhitespace(strippedTemplate);
-
-                // Only try HTML stripping if the stripped version is different
-                if (strippedTemplate !== templateText) {
-                  // Check if stripped template has variables
-                  if (hasVariables(strippedTemplate)) {
-                    try {
-                      const pattern = createVariablePattern(strippedTemplate);
-                      if (pattern.test(normalizedNodeText)) {
-                        content = contentData;
-                        break;
-                      }
-                    } catch {
-                      continue;
-                    }
-                  } else {
-                    // Simple text match for stripped HTML without variables
-                    if (normalizedStrippedTemplate.includes(normalizedNodeText)) {
-                      content = contentData;
-                      break;
-                    }
-                  }
+                // Exact comparison
+                if (rendered === normalizedNodeText) {
+                  content = contentData;
+                  matchedTemplateText = templateText; // Store the matched template
+                  break;
                 }
               }
             }
@@ -108,7 +88,7 @@ export function processDomChanges() {
 
             const data: ContentNode = {
               type: variation ? 'variation' : 'text',
-              text: node.textContent.trim(),
+              text: stripHtmlTags(matchedTemplateText), // Store HTML-stripped template
               contentKey: keys,
               variation: variation || '',
             };
@@ -148,7 +128,25 @@ export function processDomChanges() {
                 return null;
               }
 
-              const content = window.memoryMap?.get(contentValue);
+              let content = window.memoryMap?.get(contentValue);
+              let matchedTemplateText = contentValue; // Track the template text
+
+              // If direct lookup fails, try exact matching with renderTemplate
+              if (!content) {
+                const normalizedValue = normalizeWhitespace(contentValue);
+
+                // Search through all templates and do exact matching
+                for (const [templateText, contentData] of window.memoryMap) {
+                  const rendered = renderTemplate(templateText, contentData.variables);
+
+                  if (rendered === normalizedValue) {
+                    content = contentData;
+                    matchedTemplateText = templateText; // Store the matched template
+                    break;
+                  }
+                }
+              }
+
               const keys = Array.from(content?.ids || []);
               const variation = content?.variation;
 
@@ -158,7 +156,7 @@ export function processDomChanges() {
 
               const data: ContentNode = {
                 type: variation ? 'variation' : 'text',
-                text: contentValue,
+                text: stripHtmlTags(matchedTemplateText), // Store HTML-stripped template
                 contentKey: keys,
                 variation: variation || '',
               };
