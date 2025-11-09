@@ -22,6 +22,44 @@ function isInternalWrapper(node: Node): boolean {
   );
 }
 
+/**
+ * Gets clean text content from an element, excluding our UI elements (labels, buttons, wrappers)
+ * This prevents contamination of text content by our own UI additions
+ */
+function getCleanTextContent(element: HTMLElement | null): string {
+  if (!element) return '';
+
+  const IGNORED_IDS = [
+    'contentstorage-element-label',
+    'contentstorage-element-button',
+    'contentstorage-element-image-wrapper',
+    'contentstorage-element-input-wrapper'
+  ];
+
+  let textContent = '';
+
+  const collectText = (node: Node): void => {
+    // Skip our UI elements
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const elem = node as HTMLElement;
+      if (elem.id && IGNORED_IDS.includes(elem.id)) {
+        return; // Skip this element and its children
+      }
+    }
+
+    // Collect text from text nodes
+    if (node.nodeType === Node.TEXT_NODE) {
+      textContent += node.textContent || '';
+    }
+
+    // Recursively process child nodes
+    node.childNodes.forEach(collectText);
+  };
+
+  collectText(element);
+  return textContent;
+}
+
 export function processDomChanges() {
   try {
     // applyConfig(); // Assuming this is part of your process
@@ -57,7 +95,7 @@ export function processDomChanges() {
 
             // If direct lookup fails, try exact matching with renderTemplate using parent's textContent
             if (!content && node.parentElement) {
-              const parentText = node.parentElement.textContent?.trim();
+              const parentText = getCleanTextContent(node.parentElement).trim();
               if (parentText) {
                 const normalizedParentText = normalizeWhitespace(parentText);
 

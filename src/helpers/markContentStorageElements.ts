@@ -211,6 +211,9 @@ const trackContentElement = (node: Node, contentKey: string, templateText?: stri
     // Track parent element for positioning edit buttons
     const parentElement = node.parentElement;
     if (parentElement && templateText) {
+      // Set data-content-key attribute so showPendingChanges() can find this element
+      parentElement.setAttribute('data-content-key', contentKey);
+
       if (!contentKeyToElements.has(contentKey)) {
         contentKeyToElements.set(contentKey, []);
       }
@@ -288,6 +291,8 @@ const findAndMarkElements = (
     const existingContentKey = parentElement?.getAttribute('data-content-key');
 
     let matchedItem: ContentNode | undefined;
+    // Variable to capture the original template (with HTML) for tracking
+    let originalTemplate: string | undefined = undefined;
 
     if (existingContentKey) {
       // If parent already has content key, find by content key to ensure consistency
@@ -308,11 +313,16 @@ const findAndMarkElements = (
           // O(1) lookup using pre-built template map
           const templateData = templateLookup.get(item.text);
           if (templateData) {
-            return matchesExact(
+            const isMatch = matchesExact(
               parentText,
               templateData.template,
               templateData.variables
             );
+            if (isMatch) {
+              // Store the original template (with HTML) for tracking
+              originalTemplate = templateData.template;
+            }
+            return isMatch;
           }
           // Fallback to matching without variables (shouldn't happen often)
           return matchesExact(parentText, item.text);
@@ -328,7 +338,8 @@ const findAndMarkElements = (
       // Check if we should skip wrapping this text node to prevent duplicates
       if (!shouldSkipTextNodeWrapping(element, contentKey)) {
         // If a match is found and no ancestor/sibling already has this key, track it
-        const templateText = matchedItem.type === 'image' ? undefined : matchedItem.text;
+        // Use originalTemplate (with HTML) if available, otherwise fall back to matchedItem.text
+        const templateText = matchedItem.type === 'image' ? undefined : (originalTemplate || matchedItem.text);
         trackContentElement(element, contentKey, templateText);
       }
     } else {
@@ -752,7 +763,7 @@ export const showPendingChanges = (pendingChanges: PendingChangeSimple[]) => {
         ) {
           const textVal = change.value?.toString() || '';
 
-          if (textVal && change.langCountry === window.currentLanguageCode) {
+          if (textVal && change.langCountry?.toLowerCase() === window.currentLanguageCode?.toLowerCase()) {
             elem.setAttribute('data-content-showing-pending-change', 'true');
             node.nodeValue = change.value?.toString() || '';
           }
