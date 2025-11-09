@@ -744,32 +744,84 @@ export const hideContentstorageElementsHighlight = () => {
 };
 
 export const showPendingChanges = (pendingChanges: PendingChangeSimple[]) => {
-  pendingChanges.forEach((change) => {
+  console.log('[Pending Changes] Processing pending changes:', {
+    count: pendingChanges.length,
+    currentLanguageCode: window.currentLanguageCode,
+    changes: pendingChanges.map(c => ({ contentId: c.contentId, langCountry: c.langCountry, value: c.value }))
+  });
+
+  pendingChanges.forEach((change, index) => {
+    console.log(`[Pending Changes] [${index + 1}/${pendingChanges.length}] Processing change:`, {
+      contentId: change.contentId,
+      langCountry: change.langCountry,
+      value: change.value
+    });
+
     const elem = document.querySelector(
       `[data-content-key="${change.contentId}"]`
     );
 
-    if (elem) {
-      const childNodes = elem.childNodes;
+    if (!elem) {
+      console.warn(`[Pending Changes] Element NOT FOUND for contentId: "${change.contentId}"`);
+      return;
+    }
 
-      // Loop through all the child nodes
-      for (const node of childNodes) {
-        // Check if the node is a text node (nodeType === 3)
-        // and if its content is not just whitespace.
-        if (
-          node.nodeType === Node.TEXT_NODE &&
-          node.textContent &&
-          node.textContent.trim().length > 0
-        ) {
-          const textVal = change.value?.toString() || '';
+    console.log(`[Pending Changes] Element FOUND:`, {
+      tagName: (elem as HTMLElement).tagName,
+      className: (elem as HTMLElement).className,
+      childNodesCount: elem.childNodes.length
+    });
 
-          if (textVal && change.langCountry?.toLowerCase() === window.currentLanguageCode?.toLowerCase()) {
-            elem.setAttribute('data-content-showing-pending-change', 'true');
-            node.nodeValue = change.value?.toString() || '';
-          }
+    const childNodes = elem.childNodes;
 
-          break; // Remove this 'break' if you want to replace ALL text nodes with the new text.
+    console.log('[Pending Changes] Child nodes:', Array.from(childNodes).map((node, i) => ({
+      index: i,
+      nodeType: node.nodeType,
+      nodeName: node.nodeName,
+      textContent: node.nodeType === Node.TEXT_NODE ? `"${node.textContent}"` : (node as HTMLElement).id || 'no-id'
+    })));
+
+    // Loop through all the child nodes
+    for (const node of childNodes) {
+      // Check if the node is a text node (nodeType === 3)
+      // and if its content is not just whitespace.
+      if (
+        node.nodeType === Node.TEXT_NODE &&
+        node.textContent &&
+        node.textContent.trim().length > 0
+      ) {
+        console.log('[Pending Changes] Found text node:', {
+          textContent: `"${node.textContent}"`,
+          trimmedLength: node.textContent.trim().length
+        });
+
+        const textVal = change.value?.toString() || '';
+
+        console.log('[Pending Changes] Language comparison:', {
+          'change.langCountry': change.langCountry,
+          'change.langCountry.toLowerCase()': change.langCountry?.toLowerCase(),
+          'window.currentLanguageCode': window.currentLanguageCode,
+          'window.currentLanguageCode.toLowerCase()': window.currentLanguageCode?.toLowerCase(),
+          'match': change.langCountry?.toLowerCase() === window.currentLanguageCode?.toLowerCase(),
+          'textVal': textVal
+        });
+
+        if (textVal && change.langCountry?.toLowerCase() === window.currentLanguageCode?.toLowerCase()) {
+          console.log('[Pending Changes] ✓ UPDATE APPLIED:', {
+            oldValue: node.textContent,
+            newValue: change.value?.toString()
+          });
+          elem.setAttribute('data-content-showing-pending-change', 'true');
+          node.nodeValue = change.value?.toString() || '';
+        } else {
+          console.warn('[Pending Changes] ✗ UPDATE SKIPPED:', {
+            reason: !textVal ? 'textVal is empty' : 'language code mismatch',
+            textVal,
+            langMatch: change.langCountry?.toLowerCase() === window.currentLanguageCode?.toLowerCase()
+          });
         }
+
+        break; // Remove this 'break' if you want to replace ALL text nodes with the new text.
       }
     }
   });
