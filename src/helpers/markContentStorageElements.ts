@@ -306,10 +306,7 @@ const findAndMarkElements = (
       const parentText = element.parentElement?.textContent?.trim();
 
       matchedItem = content.find((item) => {
-        if (
-          (item.type === 'text' || item.type === 'variation') &&
-          parentText
-        ) {
+        if (item.type === 'text' && parentText) {
           // O(1) lookup using pre-built template map
           const templateData = templateLookup.get(item.text);
           if (templateData) {
@@ -386,18 +383,6 @@ const findAndMarkElements = (
               );
             }
             return matchesExact(contentValue, item.text);
-          } else if (item.type === 'variation') {
-            const textToMatch = item.variation || item.text;
-            // O(1) lookup using pre-built template map
-            const templateData = templateLookup.get(textToMatch);
-            if (templateData) {
-              return matchesExact(
-                contentValue,
-                templateData.template,
-                templateData.variables
-              );
-            }
-            return matchesExact(contentValue, textToMatch);
           }
           return false;
         });
@@ -468,221 +453,243 @@ export const markContentStorageElements = (
     // For IMG/INPUT: still use data-content-key attribute
     const attributeElements = document.querySelectorAll<HTMLElement>('[data-content-key]');
 
-    // Combine elements from both sources
-    const allContentElements = new Map<string, HTMLElement>();
+    // Combine elements from both sources - now stores arrays to support duplicates
+    const allContentElements = new Map<string, HTMLElement[]>();
 
     // Add IMG/INPUT elements that have data-content-key
     attributeElements.forEach((element) => {
       const key = element.dataset.contentKey;
       if (key) {
-        allContentElements.set(key, element);
+        const existing = allContentElements.get(key) || [];
+        existing.push(element);
+        allContentElements.set(key, existing);
       }
     });
 
-    // Add text content elements from our tracking map
+    // Add ALL text content elements from our tracking map (not just the first)
     contentKeyToElements.forEach((infos, contentKey) => {
-      // Use the first parent element for this content key
-      const firstInfo = infos[0];
-      if (firstInfo && !allContentElements.has(contentKey)) {
-        // Store the element with a special marker so we know to use the tracked contentValue
-        const element = firstInfo.element;
-        element.setAttribute('data-tracked-content-value', firstInfo.contentValue);
-        allContentElements.set(contentKey, element);
-      }
+      infos.forEach((info) => {
+        const element = info.element;
+        element.setAttribute('data-tracked-content-value', info.contentValue);
+        const existing = allContentElements.get(contentKey) || [];
+        // Avoid adding the same element twice
+        if (!existing.includes(element)) {
+          existing.push(element);
+          allContentElements.set(contentKey, existing);
+        }
+      });
     });
 
-    allContentElements.forEach((element, contentStorageId) => {
+    allContentElements.forEach((elements, contentStorageId) => {
       if (!contentStorageId || !shouldHighlight) {
         return;
       }
 
-      const isImg = isImageElement(element);
-      const isInput = element.tagName === 'INPUT';
-      let contentValue: string | null | undefined;
-      let wrapper: HTMLElement | null = null;
+      // Check if this content key has duplicates (multiple elements)
+      const hasDuplicates = elements.length > 1;
+      // Use orange for duplicates, blue for single elements
+      const highlightColor = hasDuplicates ? '#f90' : '#1791FF';
 
-      // Determine the content value based on element type
-      if (isImg) {
-        contentValue = element.src;
-      } else if (isInput) {
-        const inputElement = element as HTMLInputElement;
-        contentValue =
-          inputElement.placeholder || inputElement.getAttribute('aria-label');
-      } else {
-        // For text content, use the tracked template value if available
-        const trackedValue = element.getAttribute('data-tracked-content-value');
-        if (trackedValue) {
-          contentValue = trackedValue;
-          // Clean up the temporary attribute
-          element.removeAttribute('data-tracked-content-value');
+      elements.forEach((element) => {
+        const isImg = isImageElement(element);
+        const isInput = element.tagName === 'INPUT';
+        let contentValue: string | null | undefined;
+        let wrapper: HTMLElement | null = null;
+
+        // Determine the content value based on element type
+        if (isImg) {
+          contentValue = element.src;
+        } else if (isInput) {
+          const inputElement = element as HTMLInputElement;
+          contentValue =
+            inputElement.placeholder || inputElement.getAttribute('aria-label');
         } else {
-          contentValue = element.textContent;
-        }
-      }
-
-      // Ensure the content is valid and tracked
-      // For elements showing pending changes, we should skip the contentValue check
-      // since the displayed text won't match the original text in memoryMap
-      const isShowingPendingChange = element.getAttribute(
-        'data-content-showing-pending-change'
-      );
-
-      if (!contentValue) {
-        return;
-      }
-
-      // Skip memoryMap check for pending changes, or check if content exists in memoryMap
-      // For content with variables, we need to do a more sophisticated check
-      if (!isShowingPendingChange) {
-        let contentFound = window.memoryMap.has(contentValue);
-
-        // If direct lookup fails and this is text content, try exact matching with renderTemplate
-        if (!contentFound && !isImg && !isInput) {
-          const normalizedContentValue = normalizeWhitespace(
-            contentValue.trim()
-          );
-
-          for (const [templateText, contentData] of window.memoryMap) {
-            // Render template with variables and do exact matching
-            const rendered = renderTemplate(
-              templateText,
-              contentData.variables
-            );
-
-            if (rendered === normalizedContentValue) {
-              contentFound = true;
-              break;
-            }
+          // For text content, use the tracked template value if available
+          const trackedValue = element.getAttribute('data-tracked-content-value');
+          if (trackedValue) {
+            contentValue = trackedValue;
+            // Clean up the temporary attribute
+            element.removeAttribute('data-tracked-content-value');
+          } else {
+            contentValue = element.textContent;
           }
         }
 
-        if (!contentFound) {
+        // Ensure the content is valid and tracked
+        // For elements showing pending changes, we should skip the contentValue check
+        // since the displayed text won't match the original text in memoryMap
+        const isShowingPendingChange = element.getAttribute(
+          'data-content-showing-pending-change'
+        );
+
+        if (!contentValue) {
           return;
         }
-      }
 
-      // Create a wrapper for IMG and INPUT elements to help with positioning
-      if (isImg || isInput) {
-        const wrapperElemId = isImg
-          ? 'contentstorage-element-image-wrapper'
-          : 'contentstorage-element-input-wrapper';
+        // Skip memoryMap check for pending changes, or check if content exists in memoryMap
+        // For content with variables, we need to do a more sophisticated check
+        if (!isShowingPendingChange) {
+          let contentFound = window.memoryMap.has(contentValue);
 
-        const parentNode = element.parentNode as HTMLElement;
-        // Check if the element is already wrapped
-        if (parentNode && parentNode.id === wrapperElemId) {
-          wrapper = parentNode;
-        } else {
-          wrapper = document.createElement('div');
-          wrapper.setAttribute('id', wrapperElemId);
+          // If direct lookup fails and this is text content, try exact matching with renderTemplate
+          if (!contentFound && !isImg && !isInput) {
+            const normalizedContentValue = normalizeWhitespace(
+              contentValue.trim()
+            );
 
-          // Reset inherited styles for wrapper
-          resetInheritedStyles(wrapper);
-
-          // Apply protected wrapper styles
-          const wrapperStyles = {
-            position: 'relative',
-            display: 'inline-block',
-            'vertical-align': 'baseline',
-            'max-width': 'none',
-            'max-height': 'none',
-            'min-width': '0',
-            'min-height': '0',
-          };
-          applyProtectedStyles(wrapper, wrapperStyles);
-
-          if (element.parentNode) {
-            try {
-              element.parentNode.insertBefore(wrapper, element);
-              wrapper.appendChild(element);
-            } catch (error) {
-              console.debug(
-                '[Live editor] Failed to wrap image/input element:',
-                error
+            for (const [templateText, contentData] of window.memoryMap) {
+              // Render template with variables and do exact matching
+              const rendered = renderTemplate(
+                templateText,
+                contentData.variables
               );
+
+              if (rendered === normalizedContentValue) {
+                contentFound = true;
+                break;
+              }
             }
+          }
+
+          if (!contentFound) {
+            return;
           }
         }
 
-        // Apply highlight outline with protection
-        const highlightStyles = {
-          outline: '1px solid #1791FF',
-          'border-radius': isImg ? '2px' : '4px',
-          'outline-offset': '0',
+        // Create a wrapper for IMG and INPUT elements to help with positioning
+        if (isImg || isInput) {
+          const wrapperElemId = isImg
+            ? 'contentstorage-element-image-wrapper'
+            : 'contentstorage-element-input-wrapper';
+
+          const parentNode = element.parentNode as HTMLElement;
+          // Check if the element is already wrapped
+          if (parentNode && parentNode.id === wrapperElemId) {
+            wrapper = parentNode;
+          } else {
+            wrapper = document.createElement('div');
+            wrapper.setAttribute('id', wrapperElemId);
+
+            // Reset inherited styles for wrapper
+            resetInheritedStyles(wrapper);
+
+            // Apply protected wrapper styles
+            const wrapperStyles = {
+              position: 'relative',
+              display: 'inline-block',
+              'vertical-align': 'baseline',
+              'max-width': 'none',
+              'max-height': 'none',
+              'min-width': '0',
+              'min-height': '0',
+            };
+            applyProtectedStyles(wrapper, wrapperStyles);
+
+            if (element.parentNode) {
+              try {
+                element.parentNode.insertBefore(wrapper, element);
+                wrapper.appendChild(element);
+              } catch (error) {
+                console.debug(
+                  '[Live editor] Failed to wrap image/input element:',
+                  error
+                );
+              }
+            }
+          }
+
+          // Apply highlight outline with protection (use dynamic color)
+          const highlightStyles = {
+            outline: `1px solid ${highlightColor}`,
+            'border-radius': isImg ? '2px' : '4px',
+            'outline-offset': '0',
+          };
+          applyProtectedStyles(wrapper, highlightStyles);
+          wrapper.setAttribute('data-contentstorage-styled', 'wrapper');
+        } else {
+          // For text nodes (parent elements), style them directly with protection
+          const spanHighlightStyles = {
+            outline: `1px solid ${highlightColor}`,
+            'outline-offset': '4px',
+            'border-radius': '2px',
+            position: 'relative',
+          };
+          applyProtectedStyles(element, spanHighlightStyles);
+          element.setAttribute('data-contentstorage-styled', 'text');
+        }
+
+        const parentForControls = wrapper || element;
+
+        // Prevent adding duplicate labels or buttons
+        if (parentForControls.querySelector('#contentstorage-element-label')) {
+          return;
+        }
+
+        const label = document.createElement('div');
+        label.setAttribute('id', 'contentstorage-element-label');
+        label.textContent = contentStorageId;
+
+        // Reset inherited styles for label
+        resetInheritedStyles(label);
+
+        // Apply protected label styles (use dynamic color)
+        const labelStyles: Record<string, string> = {
+          position: 'absolute',
+          left: 'calc(100% + 10px)',
+          color: highlightColor,
+          'font-size': '10px',
+          'font-weight': '400',
+          'font-family':
+            'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+          'line-height': '1.2',
+          'z-index': '9999',
+          'pointer-events': 'none',
+          'user-select': 'none',
+          'white-space': 'nowrap',
+          'text-align': 'left',
+          display: 'block',
+          'max-width': 'none',
+          width: 'auto',
+          height: 'auto',
         };
-        applyProtectedStyles(wrapper, highlightStyles);
-        wrapper.setAttribute('data-contentstorage-styled', 'wrapper');
-      } else {
-        // For text nodes (parent elements), style them directly with protection
-        const spanHighlightStyles = {
-          outline: '1px solid #1791FF',
-          'outline-offset': '4px',
-          'border-radius': '2px',
-          position: 'relative',
-        };
-        applyProtectedStyles(element, spanHighlightStyles);
-        element.setAttribute('data-contentstorage-styled', 'text');
-      }
 
-      const parentForControls = wrapper || element;
+        if (isInput || isImg) {
+          labelStyles['bottom'] = '0px';
+        } else {
+          labelStyles['top'] = '4px';
+        }
 
-      // Prevent adding duplicate labels or buttons
-      if (parentForControls.querySelector('#contentstorage-element-label')) {
-        return;
-      }
+        applyProtectedStyles(label, labelStyles);
 
-      const label = document.createElement('div');
-      label.setAttribute('id', 'contentstorage-element-label');
-      label.textContent = contentStorageId;
+        const button = editButton(contentStorageId);
 
-      // Reset inherited styles for label
-      resetInheritedStyles(label);
-
-      // Apply protected label styles
-      const labelStyles: Record<string, string> = {
-        position: 'absolute',
-        left: 'calc(100% + 10px)',
-        color: '#1791FF',
-        'font-size': '10px',
-        'font-weight': '400',
-        'font-family':
-          'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-        'line-height': '1.2',
-        'z-index': '9999',
-        'pointer-events': 'none',
-        'user-select': 'none',
-        'white-space': 'nowrap',
-        'text-align': 'left',
-        display: 'block',
-        'max-width': 'none',
-        width: 'auto',
-        height: 'auto',
-      };
-
-      if (isInput || isImg) {
-        labelStyles['bottom'] = '0px';
-      } else {
-        labelStyles['top'] = '4px';
-      }
-
-      applyProtectedStyles(label, labelStyles);
-
-      const button = editButton(contentStorageId);
-
-      parentForControls.appendChild(label);
-      parentForControls.appendChild(button);
+        parentForControls.appendChild(label);
+        parentForControls.appendChild(button);
+      });
     });
   } finally {
     isProcessing = false;
   }
 };
 
-export const hideContentstorageElementsHighlight = () => {
-  // Clear tracking map
-  contentKeyToElements.clear();
+export const hideContentstorageElementsHighlight = (contentKey?: string) => {
+  // If contentKey provided, only affect elements with that key
+  // Otherwise, affect all elements (clear all)
+  const keySelector = contentKey
+    ? `[data-content-key="${contentKey}"]`
+    : '[data-content-key]';
 
-  // Remove styles from elements we styled (preserves pre-existing inline styles)
-  const styledElements = document.querySelectorAll<HTMLElement>('[data-contentstorage-styled]');
-  styledElements.forEach((element) => {
+  // Clear tracking map (for specific key or all)
+  if (contentKey) {
+    contentKeyToElements.delete(contentKey);
+  } else {
+    contentKeyToElements.clear();
+  }
+
+  // Find elements to process - those with data-content-key that match
+  const targetElements = document.querySelectorAll<HTMLElement>(keySelector);
+
+  targetElements.forEach((element) => {
     const styleType = element.getAttribute('data-contentstorage-styled');
 
     if (styleType === 'text') {
@@ -711,36 +718,176 @@ export const hideContentstorageElementsHighlight = () => {
 
     // Remove marker attribute
     element.removeAttribute('data-contentstorage-styled');
+
+    // Remove label and button from this element
+    element.querySelector('#contentstorage-element-label')?.remove();
+    element.querySelector('#contentstorage-element-button')?.remove();
+
+    // Note: Keep data-content-key for re-highlighting capability
   });
 
-  // Clean up wrapper elements (unwrap IMG/INPUT)
-  const wrappers = document.querySelectorAll<HTMLElement>(
-    '#contentstorage-element-image-wrapper, #contentstorage-element-input-wrapper'
-  );
-  wrappers.forEach((wrapper) => {
-    const elementToUnwrap = wrapper.querySelector('img, input');
-    const parent = wrapper.parentNode;
-
-    if (parent && elementToUnwrap) {
-      try {
-        parent.insertBefore(elementToUnwrap, wrapper);
-        parent.removeChild(wrapper);
-      } catch (error) {
-        console.debug('[Live editor] Failed to unwrap element:', error);
+  // Clean up wrapper elements (unwrap IMG/INPUT) - only for matching elements
+  if (contentKey) {
+    // For specific key, find wrappers containing elements with that key
+    targetElements.forEach((element) => {
+      const parentNode = element.parentNode as HTMLElement;
+      if (
+        parentNode &&
+        (parentNode.id === 'contentstorage-element-image-wrapper' ||
+          parentNode.id === 'contentstorage-element-input-wrapper')
+      ) {
+        const grandParent = parentNode.parentNode;
+        if (grandParent) {
+          try {
+            grandParent.insertBefore(element, parentNode);
+            grandParent.removeChild(parentNode);
+          } catch (error) {
+            console.debug('[Live editor] Failed to unwrap element:', error);
+          }
+        }
       }
-    }
-  });
+    });
+  } else {
+    // For all, use the original approach
+    const wrappers = document.querySelectorAll<HTMLElement>(
+      '#contentstorage-element-image-wrapper, #contentstorage-element-input-wrapper'
+    );
+    wrappers.forEach((wrapper) => {
+      const elementToUnwrap = wrapper.querySelector('img, input');
+      const parent = wrapper.parentNode;
 
-  // Remove data-content-key attributes from IMG/INPUT elements
-  const elements = document.querySelectorAll<HTMLElement>('[data-content-key]');
+      if (parent && elementToUnwrap) {
+        try {
+          parent.insertBefore(elementToUnwrap, wrapper);
+          parent.removeChild(wrapper);
+        } catch (error) {
+          console.debug('[Live editor] Failed to unwrap element:', error);
+        }
+      }
+    });
+
+    // Remove data-content-key attributes only when clearing all
+    const elements = document.querySelectorAll<HTMLElement>('[data-content-key]');
+    elements.forEach((element) => {
+      element.removeAttribute('data-content-key');
+    });
+  }
+};
+
+/**
+ * Hide highlight for a specific content key
+ * @param contentKey The content key to hide highlight for
+ */
+export const hideElementHighlight = (contentKey: string) => {
+  hideContentstorageElementsHighlight(contentKey);
+};
+
+/**
+ * Show/restore highlight for a specific content key
+ * @param contentKey The content key to show highlight for
+ */
+export const showElementHighlight = (contentKey: string) => {
+  // Find all elements with this specific content key
+  const elements = document.querySelectorAll<HTMLElement>(
+    `[data-content-key="${contentKey}"]`
+  );
+
   elements.forEach((element) => {
-    element.removeAttribute('data-content-key');
-  });
+    const isImg = element.tagName === 'IMG';
+    const isInput = element.tagName === 'INPUT';
 
-  // Remove labels and buttons
-  const labels = document.querySelectorAll<HTMLElement>('#contentstorage-element-label');
-  const buttons = document.querySelectorAll<HTMLElement>('#contentstorage-element-button');
-  [...labels, ...buttons].forEach((item) => item.remove());
+    // Apply highlight styles
+    const highlightStyles = {
+      outline: '1px solid #1791FF',
+      'outline-offset': isImg || isInput ? '0' : '4px',
+      'border-radius': '2px',
+      position: 'relative',
+    };
+    applyProtectedStyles(element, highlightStyles);
+    element.setAttribute('data-contentstorage-styled', 'text');
+
+    // Check if label/button already exist
+    if (element.querySelector('#contentstorage-element-label')) {
+      return;
+    }
+
+    // Add label
+    const label = document.createElement('div');
+    label.setAttribute('id', 'contentstorage-element-label');
+    label.textContent = contentKey;
+    resetInheritedStyles(label);
+
+    const labelStyles: Record<string, string> = {
+      position: 'absolute',
+      left: 'calc(100% + 10px)',
+      color: '#1791FF',
+      'font-size': '10px',
+      'font-weight': '400',
+      'font-family':
+        'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      'line-height': '1.2',
+      'z-index': '9999',
+      'pointer-events': 'none',
+      'user-select': 'none',
+      'white-space': 'nowrap',
+      'text-align': 'left',
+      display: 'block',
+      'max-width': 'none',
+      width: 'auto',
+      height: 'auto',
+      top: '4px',
+    };
+    applyProtectedStyles(label, labelStyles);
+
+    // Add button
+    const button = editButton(contentKey);
+
+    element.appendChild(label);
+    element.appendChild(button);
+  });
+};
+
+/**
+ * Renders an HTML template with variables replaced by their values.
+ * NOTE: Uses innerHTML which could be an XSS risk. However, pending changes
+ * come from the trusted parent application (contentstorage.app), so this is safe.
+ *
+ * @param templateText - Template string that may contain HTML and variables like {{varName}} or {varName}
+ * @param variables - Object with variable name/value pairs for replacement
+ * @returns DocumentFragment containing the rendered DOM nodes
+ */
+export const renderHtmlTemplate = (
+  templateText: string,
+  variables?: Record<string, string | number | boolean>
+): DocumentFragment => {
+  // Step 1: Replace variables in the template
+  let processed = templateText;
+
+  if (variables) {
+    // Replace {{varName}} patterns
+    Object.entries(variables).forEach(([key, value]) => {
+      const doublePattern = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+      processed = processed.replace(doublePattern, String(value));
+    });
+
+    // Replace {varName} patterns
+    Object.entries(variables).forEach(([key, value]) => {
+      const singlePattern = new RegExp(`\\{${key}\\}`, 'g');
+      processed = processed.replace(singlePattern, String(value));
+    });
+  }
+
+  // Step 2: Parse HTML into DOM nodes
+  const temp = document.createElement('div');
+  temp.innerHTML = processed;
+
+  // Step 3: Return as DocumentFragment
+  const fragment = document.createDocumentFragment();
+  while (temp.firstChild) {
+    fragment.appendChild(temp.firstChild);
+  }
+
+  return fragment;
 };
 
 export const showPendingChanges = (pendingChanges: PendingChangeSimple[]) => {
@@ -781,49 +928,70 @@ export const showPendingChanges = (pendingChanges: PendingChangeSimple[]) => {
       textContent: node.nodeType === Node.TEXT_NODE ? `"${node.textContent}"` : (node as HTMLElement).id || 'no-id'
     })));
 
-    // Loop through all the child nodes
-    for (const node of childNodes) {
-      // Check if the node is a text node (nodeType === 3)
-      // and if its content is not just whitespace.
-      if (
-        node.nodeType === Node.TEXT_NODE &&
-        node.textContent &&
-        node.textContent.trim().length > 0
-      ) {
-        console.log('[Pending Changes] Found text node:', {
-          textContent: `"${node.textContent}"`,
-          trimmedLength: node.textContent.trim().length
-        });
+    const textVal = change.value?.toString() || '';
 
-        const textVal = change.value?.toString() || '';
+    console.log('[Pending Changes] Language comparison:', {
+      'change.langCountry': change.langCountry,
+      'change.langCountry.toLowerCase()': change.langCountry?.toLowerCase(),
+      'window.currentLanguageCode': window.currentLanguageCode,
+      'window.currentLanguageCode.toLowerCase()': window.currentLanguageCode?.toLowerCase(),
+      'match': change.langCountry?.toLowerCase() === window.currentLanguageCode?.toLowerCase(),
+      'textVal': textVal
+    });
 
-        console.log('[Pending Changes] Language comparison:', {
-          'change.langCountry': change.langCountry,
-          'change.langCountry.toLowerCase()': change.langCountry?.toLowerCase(),
-          'window.currentLanguageCode': window.currentLanguageCode,
-          'window.currentLanguageCode.toLowerCase()': window.currentLanguageCode?.toLowerCase(),
-          'match': change.langCountry?.toLowerCase() === window.currentLanguageCode?.toLowerCase(),
-          'textVal': textVal
-        });
+    if (!textVal || change.langCountry?.toLowerCase() !== window.currentLanguageCode?.toLowerCase()) {
+      console.warn('[Pending Changes] ✗ UPDATE SKIPPED:', {
+        reason: !textVal ? 'textVal is empty' : 'language code mismatch',
+        textVal,
+        langMatch: change.langCountry?.toLowerCase() === window.currentLanguageCode?.toLowerCase()
+      });
+      return;
+    }
 
-        if (textVal && change.langCountry?.toLowerCase() === window.currentLanguageCode?.toLowerCase()) {
-          console.log('[Pending Changes] ✓ UPDATE APPLIED:', {
-            oldValue: node.textContent,
-            newValue: change.value?.toString()
-          });
-          elem.setAttribute('data-content-showing-pending-change', 'true');
-          node.nodeValue = change.value?.toString() || '';
-        } else {
-          console.warn('[Pending Changes] ✗ UPDATE SKIPPED:', {
-            reason: !textVal ? 'textVal is empty' : 'language code mismatch',
-            textVal,
-            langMatch: change.langCountry?.toLowerCase() === window.currentLanguageCode?.toLowerCase()
-          });
-        }
+    // Look up variables from memoryMap
+    const memoryEntry = Array.from(window.memoryMap).find(([, data]) => {
+      return data.ids.has(change.contentId);
+    });
+    const variables = memoryEntry?.[1]?.variables;
 
-        break; // Remove this 'break' if you want to replace ALL text nodes with the new text.
+    console.log('[Pending Changes] Variables from memoryMap:', variables);
+
+    // Render the HTML template with variables replaced
+    const fragment = renderHtmlTemplate(textVal, variables);
+
+    // Save references to our UI elements so we can preserve them
+    const label = elem.querySelector('#contentstorage-element-label');
+    const button = elem.querySelector('#contentstorage-element-button');
+
+    console.log('[Pending Changes] Preserving UI elements:', {
+      hasLabel: !!label,
+      hasButton: !!button
+    });
+
+    // Remove all child nodes except our UI elements
+    const nodesToRemove: Node[] = [];
+    for (const node of Array.from(elem.childNodes)) {
+      if (node !== label && node !== button) {
+        nodesToRemove.push(node);
       }
     }
+    nodesToRemove.forEach(node => elem.removeChild(node));
+
+    // Insert rendered content at the beginning (before label and button)
+    if (label) {
+      elem.insertBefore(fragment, label);
+    } else if (button) {
+      elem.insertBefore(fragment, button);
+    } else {
+      elem.appendChild(fragment);
+    }
+
+    elem.setAttribute('data-content-showing-pending-change', 'true');
+
+    console.log('[Pending Changes] ✓ UPDATE APPLIED:', {
+      contentId: change.contentId,
+      newHtmlContent: elem.innerHTML
+    });
   });
 };
 
@@ -833,29 +1001,50 @@ export const showOriginalContent = () => {
   );
 
   pendingChangesContent.forEach((pendingChangeElem) => {
-    const childNodes = pendingChangeElem.childNodes;
     const contentKey = pendingChangeElem.getAttribute('data-content-key');
 
-    // Loop through all the child nodes
-    for (const node of childNodes) {
-      // Check if the node is a text node (nodeType === 3)
-      // and if its content is not just whitespace.
-      if (
-        contentKey &&
-        node.nodeType === Node.TEXT_NODE &&
-        node.textContent &&
-        node.textContent.trim().length > 0
-      ) {
-        const textVal = Array.from(window.memoryMap).find(([, data]) => {
-          return data.ids.has(contentKey);
-        });
+    if (!contentKey) {
+      return;
+    }
 
-        if (textVal && textVal.length > 0 && typeof textVal[0] === 'string') {
-          node.nodeValue = textVal[0] || '';
-        }
+    // Find the original template and variables from memoryMap
+    const memoryEntry = Array.from(window.memoryMap).find(([, data]) => {
+      return data.ids.has(contentKey);
+    });
 
-        break; // Remove this 'break' if you want to replace ALL text nodes with the new text.
+    if (!memoryEntry || !memoryEntry[0]) {
+      return;
+    }
+
+    const templateText = memoryEntry[0];
+    const variables = memoryEntry[1].variables;
+
+    // Render the HTML template with variables replaced
+    const fragment = renderHtmlTemplate(templateText, variables);
+
+    // Save references to our UI elements so we can preserve them
+    const label = pendingChangeElem.querySelector('#contentstorage-element-label');
+    const button = pendingChangeElem.querySelector('#contentstorage-element-button');
+
+    // Remove all child nodes except our UI elements
+    const nodesToRemove: Node[] = [];
+    for (const node of Array.from(pendingChangeElem.childNodes)) {
+      if (node !== label && node !== button) {
+        nodesToRemove.push(node);
       }
     }
+    nodesToRemove.forEach(node => pendingChangeElem.removeChild(node));
+
+    // Insert rendered content at the beginning (before label and button)
+    if (label) {
+      pendingChangeElem.insertBefore(fragment, label);
+    } else if (button) {
+      pendingChangeElem.insertBefore(fragment, button);
+    } else {
+      pendingChangeElem.appendChild(fragment);
+    }
+
+    // Remove the pending change marker
+    pendingChangeElem.removeAttribute('data-content-showing-pending-change');
   });
 };

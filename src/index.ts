@@ -6,7 +6,9 @@ import {
 import { setAndApplyInitialConfig, setConfig } from './helpers/config';
 import {
   hideContentstorageElementsHighlight,
+  hideElementHighlight,
   markContentStorageElements,
+  showElementHighlight,
   showOriginalContent,
   showPendingChanges,
 } from './helpers/markContentStorageElements';
@@ -19,6 +21,8 @@ import { sendMessageToParent } from './helpers/sendMessageToParent';
 import { PendingChangeSimple } from './types';
 import { clearPendingChanges, setPendingChanges } from './helpers/misc';
 import { handleScreenshotRequest } from './helpers/screenshot';
+import { isScreenshotModeEnabled } from './helpers/urlParams';
+import { createCameraButton } from './helpers/screenshotMode';
 
 (function () {
   const currentScript = document.currentScript as HTMLScriptElement;
@@ -53,137 +57,183 @@ import { handleScreenshotRequest } from './helpers/screenshot';
     return;
   }
 
-  if (window.parent && window.parent !== window) {
+  const isInIframe = window.parent && window.parent !== window;
+  const isStandaloneScreenshotMode = !isInIframe && isScreenshotModeEnabled();
+
+  if (isInIframe || isStandaloneScreenshotMode) {
     console.log(
-      '[Live editor] Running inside an iframe. Setting up communication with parent and initiating handshake.'
+      isInIframe
+        ? '[Live editor] Running inside an iframe. Setting up communication with parent and initiating handshake.'
+        : '[Live editor] Running in standalone screenshot mode.'
     );
 
     // Create an observer instance linked to the callback function
     const observer = new MutationObserver(mutationObserverCallback);
 
-    let handshakeSuccessful = false;
-    let handshakeTimeoutId: number | undefined;
+    if (isStandaloneScreenshotMode) {
+      // Standalone screenshot mode - initialize directly without handshake
+      setAndApplyInitialConfig({
+        highlightEditableContent: true,
+        showPendingChanges: false,
+      });
 
-    // Handler for messages from the parent
-    const messageFromParentHandler = (event: MessageEvent) => {
-      if (event.source === window.parent && event.data) {
-        if (event.data.type === INCOMING_MESSAGE_TYPES.HANDSHAKE_ACKNOWLEDGE) {
-          if (!handshakeSuccessful) {
-            // Process handshake ack only once
-            handshakeSuccessful = true;
+      processDomChanges();
 
-            console.log(
-              '[Live editor] Received handshake acknowledgment from parent:',
-              event.data.payload
-            );
+      console.log('[Live editor] Started observing DOM for mutations');
+      observer.observe(document.body, mutationObserverConfig);
 
-            setAndApplyInitialConfig(event.data.payload.data.config);
-            console.log('[Live editor] Applied config:', event.data.payload);
+      // Add camera button for taking screenshots
+      createCameraButton();
 
-            processDomChanges();
+      console.log('[Live editor] Standalone screenshot mode ready');
+    } else {
+      // Iframe mode - setup handshake with parent
+      let handshakeSuccessful = false;
+      let handshakeTimeoutId: number | undefined;
 
-            console.log('[Live editor] Started observing DOM for mutations');
-            observer.observe(document.body, mutationObserverConfig);
+      // Handler for messages from the parent
+      const messageFromParentHandler = (event: MessageEvent) => {
+        if (event.source === window.parent && event.data) {
+          if (
+            event.data.type === INCOMING_MESSAGE_TYPES.HANDSHAKE_ACKNOWLEDGE
+          ) {
+            if (!handshakeSuccessful) {
+              // Process handshake ack only once
+              handshakeSuccessful = true;
 
-            console.log(
-              '[Live editor] Received handshake acknowledgment from parent:',
-              event.data.payload
-            );
-            cleanupHandshakeResources();
-            console.log(
-              '[Live editor] Parent communication handshake successful. Ready for further messages.'
-            );
-            // Start
-          }
-        } else {
-          // Handle other types of messages from the parent after handshake
-          if (handshakeSuccessful) {
-            console.log(
-              '[Live editor] Received further message from parent:',
-              event.data
-            );
+              console.log(
+                '[Live editor] Received handshake acknowledgment from parent:',
+                event.data.payload
+              );
 
-            if (event.data.type === INCOMING_MESSAGE_TYPES.SET_CONFIG) {
-              setConfig(event.data.payload.data);
+              setAndApplyInitialConfig(event.data.payload.data.config);
+              console.log('[Live editor] Applied config:', event.data.payload);
+
+              processDomChanges();
+
+              console.log('[Live editor] Started observing DOM for mutations');
+              observer.observe(document.body, mutationObserverConfig);
+
+              console.log(
+                '[Live editor] Received handshake acknowledgment from parent:',
+                event.data.payload
+              );
+              cleanupHandshakeResources();
+              console.log(
+                '[Live editor] Parent communication handshake successful. Ready for further messages.'
+              );
+              // Start
             }
-
-            if (
-              event.data.type === INCOMING_MESSAGE_TYPES.SET_HIGHLIGHT_CONTENT
-            ) {
-              setConfig({ highlightEditableContent: true });
-              markContentStorageElements([], true);
-            }
-
-            if (
-              event.data.type ===
-              INCOMING_MESSAGE_TYPES.SET_HIDE_HIGHLIGHT_CONTENT
-            ) {
-              setConfig({ highlightEditableContent: false });
-              hideContentstorageElementsHighlight();
-            }
-
-            if (
-              event.data.type === INCOMING_MESSAGE_TYPES.SHOW_PENDING_CHANGES
-            ) {
-              const pendingChangesData = event.data.payload
-                .data as PendingChangeSimple[];
-              setPendingChanges(pendingChangesData);
-              setConfig({ showPendingChanges: true });
-              showPendingChanges(pendingChangesData);
-            }
-
-            if (
-              event.data.type === INCOMING_MESSAGE_TYPES.SHOW_ORIGINAL_CONTENT
-            ) {
-              showOriginalContent();
-              clearPendingChanges();
-              setConfig({ showPendingChanges: false });
-            }
-
-            if (event.data.type === INCOMING_MESSAGE_TYPES.REQUEST_SCREENSHOT) {
-              handleScreenshotRequest();
-            }
-
-            // Process other messages here
           } else {
-            console.warn(
-              'CDN Script: Received message from parent before handshake was complete. Ignoring:',
-              event.data
-            );
+            // Handle other types of messages from the parent after handshake
+            if (handshakeSuccessful) {
+              console.log(
+                '[Live editor] Received further message from parent:',
+                event.data
+              );
+
+              if (event.data.type === INCOMING_MESSAGE_TYPES.SET_CONFIG) {
+                setConfig(event.data.payload.data);
+              }
+
+              if (
+                event.data.type === INCOMING_MESSAGE_TYPES.SET_HIGHLIGHT_CONTENT
+              ) {
+                setConfig({ highlightEditableContent: true });
+                markContentStorageElements([], true);
+              }
+
+              if (
+                event.data.type ===
+                INCOMING_MESSAGE_TYPES.SET_HIDE_HIGHLIGHT_CONTENT
+              ) {
+                setConfig({ highlightEditableContent: false });
+                hideContentstorageElementsHighlight();
+              }
+
+              if (
+                event.data.type === INCOMING_MESSAGE_TYPES.HIDE_ELEMENT_HIGHLIGHT
+              ) {
+                const { contentKey } = event.data.payload.data as {
+                  contentKey: string;
+                };
+                hideElementHighlight(contentKey);
+              }
+
+              if (
+                event.data.type === INCOMING_MESSAGE_TYPES.SHOW_ELEMENT_HIGHLIGHT
+              ) {
+                const { contentKey } = event.data.payload.data as {
+                  contentKey: string;
+                };
+                showElementHighlight(contentKey);
+              }
+
+              if (
+                event.data.type === INCOMING_MESSAGE_TYPES.SHOW_PENDING_CHANGES
+              ) {
+                const pendingChangesData = event.data.payload
+                  .data as PendingChangeSimple[];
+                setPendingChanges(pendingChangesData);
+                setConfig({ showPendingChanges: true });
+                showPendingChanges(pendingChangesData);
+              }
+
+              if (
+                event.data.type === INCOMING_MESSAGE_TYPES.SHOW_ORIGINAL_CONTENT
+              ) {
+                showOriginalContent();
+                clearPendingChanges();
+                setConfig({ showPendingChanges: false });
+              }
+
+              if (
+                event.data.type === INCOMING_MESSAGE_TYPES.REQUEST_SCREENSHOT
+              ) {
+                handleScreenshotRequest();
+              }
+
+              // Process other messages here
+            } else {
+              console.warn(
+                'CDN Script: Received message from parent before handshake was complete. Ignoring:',
+                event.data
+              );
+            }
           }
         }
-      }
-    };
+      };
 
-    const cleanupHandshakeResources = () => {
-      if (handshakeTimeoutId) {
-        clearTimeout(handshakeTimeoutId);
-        handshakeTimeoutId = undefined;
-      }
-      // We keep the general message listener active for further communication
-      // window.removeEventListener("message", messageFromParentHandler); // Only remove if no further messages are expected
-    };
+      const cleanupHandshakeResources = () => {
+        if (handshakeTimeoutId) {
+          clearTimeout(handshakeTimeoutId);
+          handshakeTimeoutId = undefined;
+        }
+        // We keep the general message listener active for further communication
+        // window.removeEventListener("message", messageFromParentHandler); // Only remove if no further messages are expected
+      };
 
-    // Add listener for parent's response (for handshake and subsequent messages)
-    window.addEventListener('message', messageFromParentHandler);
+      // Add listener for parent's response (for handshake and subsequent messages)
+      window.addEventListener('message', messageFromParentHandler);
 
-    sendMessageToParent(
-      OUTGOING_MESSAGE_TYPES.HANDSHAKE_INITIATE,
-      `Hello from iframe script (editor param: ${liveEditorParamValue}). Initiating handshake.`
-    );
+      sendMessageToParent(
+        OUTGOING_MESSAGE_TYPES.HANDSHAKE_INITIATE,
+        `Hello from iframe script (editor param: ${liveEditorParamValue}). Initiating handshake.`
+      );
 
-    // Timeout for the initial handshake
-    handshakeTimeoutId = window.setTimeout(() => {
-      if (!handshakeSuccessful) {
-        console.warn(
-          'CDN Script: Parent communication handshake timed out. Parent did not respond or acknowledge correctly.'
-        );
-        cleanupHandshakeResources(); // Clean up timeout
-        // Still keep the general message listener in case parent responds late or for other messages,
-        // or decide to remove it if handshake is strictly required to proceed.
-        // document.body.innerHTML = `<p style="color:red;">Error: Could not establish initial communication with the parent application (handshake timeout).</p>`;
-      }
-    }, COMMUNICATION_TIMEOUT_MS);
+      // Timeout for the initial handshake
+      handshakeTimeoutId = window.setTimeout(() => {
+        if (!handshakeSuccessful) {
+          console.warn(
+            'CDN Script: Parent communication handshake timed out. Parent did not respond or acknowledge correctly.'
+          );
+          cleanupHandshakeResources(); // Clean up timeout
+          // Still keep the general message listener in case parent responds late or for other messages,
+          // or decide to remove it if handshake is strictly required to proceed.
+          // document.body.innerHTML = `<p style="color:red;">Error: Could not establish initial communication with the parent application (handshake timeout).</p>`;
+        }
+      }, COMMUNICATION_TIMEOUT_MS);
+    }
   } else {
     console.log(
       '[Live editor] Not running inside an iframe, or parent is not accessible. Skipping parent communication setup.'

@@ -5,7 +5,6 @@ export type OutgoingMessageType =
 
 export type ContentNode =
   | { type: 'text'; contentKey: string[]; text: string }
-  | { type: 'variation'; contentKey: string[]; text: string; variation: string }
   | { type: 'image'; contentKey: string[]; url: string; altText: string };
 
 export const INCOMING_MESSAGE_TYPES = {
@@ -13,6 +12,8 @@ export const INCOMING_MESSAGE_TYPES = {
   SET_CONFIG: 'contentstorage-set-config',
   SET_HIGHLIGHT_CONTENT: 'contentstorage-set-highlight-content',
   SET_HIDE_HIGHLIGHT_CONTENT: 'contentstorage-set-hide-highlight-content',
+  HIDE_ELEMENT_HIGHLIGHT: 'contentstorage-hide-element-highlight',
+  SHOW_ELEMENT_HIGHLIGHT: 'contentstorage-show-element-highlight',
   SHOW_PENDING_CHANGES: 'contentstorage-show-pending-changes',
   SHOW_ORIGINAL_CONTENT: 'contentstorage-show-original-content',
   REQUEST_SCREENSHOT: 'contentstorage-request-screenshot',
@@ -39,6 +40,8 @@ export type MessagePayloadMap = {
 export type IncomingMessagePayloadMap = {
   [INCOMING_MESSAGE_TYPES.SHOW_PENDING_CHANGES]: PendingChangeSimple[];
   [INCOMING_MESSAGE_TYPES.REQUEST_SCREENSHOT]: null;
+  [INCOMING_MESSAGE_TYPES.HIDE_ELEMENT_HIGHLIGHT]: { contentKey: string };
+  [INCOMING_MESSAGE_TYPES.SHOW_ELEMENT_HIGHLIGHT]: { contentKey: string };
 };
 
 export const COMMUNICATION_TIMEOUT_MS = 5000; // 5 seconds

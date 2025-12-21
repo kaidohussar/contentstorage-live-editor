@@ -75,7 +75,6 @@ export function processDomChanges() {
         template: key,
         ids: Array.from(value.ids),
         type: value.type,
-        variation: value.variation,
         variables: value.variables,
       })),
     });
@@ -131,17 +130,15 @@ export function processDomChanges() {
             }
 
             const keys = Array.from(content?.ids || []);
-            const variation = content?.variation;
 
             if (keys.length === 0) {
               return null;
             }
 
             const data: ContentNode = {
-              type: variation ? 'variation' : 'text',
-              text: stripHtmlTags(matchedTemplateText), // Store HTML-stripped template
+              type: 'text',
+              text: stripHtmlTags(matchedTemplateText),
               contentKey: keys,
-              variation: variation || '',
             };
 
             return data;
@@ -199,17 +196,15 @@ export function processDomChanges() {
               }
 
               const keys = Array.from(content?.ids || []);
-              const variation = content?.variation;
 
               if (keys.length === 0) {
                 return null;
               }
 
               const data: ContentNode = {
-                type: variation ? 'variation' : 'text',
-                text: stripHtmlTags(matchedTemplateText), // Store HTML-stripped template
+                type: 'text',
+                text: stripHtmlTags(matchedTemplateText),
                 contentKey: keys,
-                variation: variation || '',
               };
 
               return data;

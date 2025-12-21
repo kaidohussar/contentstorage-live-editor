@@ -4,12 +4,13 @@ declare global {
       string,
       {
         ids: Set<string>;
-        type: 'text' | 'image' | 'variation';
-        variation?: string;
+        type: 'text' | 'image';
         variables?: Record<string, string | number | boolean>;
       }
     >;
     currentLanguageCode: string | null;
+    __contentstorageRefresh?: () => void;
+    __contentstorageApiKey?: string;
   }
 }
 
