@@ -7,6 +7,10 @@ import { normalizeWhitespace, stripHtmlTags } from './htmlUtils';
 
 let isProcessing = false;
 
+// Set to track content keys that have been individually hidden
+// These should be skipped during bulk re-highlighting from MutationObserver
+const individuallyHiddenKeys = new Set<string>();
+
 // Map to track content keys → element info (for positioning edit buttons)
 interface ContentElementInfo {
   element: HTMLElement;
@@ -431,6 +435,12 @@ export const markContentStorageElements = (
     // Clear previous tracking before applying new ones
     contentKeyToElements.clear();
 
+    // If this is a bulk show operation (empty content array with shouldHighlight=true),
+    // clear individually hidden keys so all elements get highlighted
+    if (shouldHighlight && content.length === 0) {
+      individuallyHiddenKeys.clear();
+    }
+
     // Create reverse lookup map for O(1) template lookups
     // Maps: HTML-stripped template → { original template with HTML, variables }
     const templateLookup = new Map<string, { template: string; variables?: Record<string, string | number | boolean> }>();
@@ -485,10 +495,12 @@ export const markContentStorageElements = (
         return;
       }
 
-      // Check if this content key has duplicates (multiple elements)
-      const hasDuplicates = elements.length > 1;
-      // Use orange for duplicates, blue for single elements
-      const highlightColor = hasDuplicates ? '#f90' : '#1791FF';
+      // Skip elements that have been individually hidden
+      if (individuallyHiddenKeys.has(contentStorageId)) {
+        return;
+      }
+
+      const highlightColor = '#1791FF';
 
       elements.forEach((element) => {
         const isImg = isImageElement(element);
@@ -684,6 +696,8 @@ export const hideContentstorageElementsHighlight = (contentKey?: string) => {
     contentKeyToElements.delete(contentKey);
   } else {
     contentKeyToElements.clear();
+    // Also clear individually hidden keys when doing bulk hide
+    individuallyHiddenKeys.clear();
   }
 
   // Find elements to process - those with data-content-key that match
@@ -779,6 +793,8 @@ export const hideContentstorageElementsHighlight = (contentKey?: string) => {
  * @param contentKey The content key to hide highlight for
  */
 export const hideElementHighlight = (contentKey: string) => {
+  // Track this key as individually hidden so MutationObserver doesn't re-highlight it
+  individuallyHiddenKeys.add(contentKey);
   hideContentstorageElementsHighlight(contentKey);
 };
 
@@ -787,6 +803,9 @@ export const hideElementHighlight = (contentKey: string) => {
  * @param contentKey The content key to show highlight for
  */
 export const showElementHighlight = (contentKey: string) => {
+  // Remove from individually hidden set so MutationObserver can re-highlight if needed
+  individuallyHiddenKeys.delete(contentKey);
+
   // Find all elements with this specific content key
   const elements = document.querySelectorAll<HTMLElement>(
     `[data-content-key="${contentKey}"]`

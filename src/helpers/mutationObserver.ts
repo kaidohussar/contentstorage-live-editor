@@ -60,6 +60,45 @@ function getCleanTextContent(element: HTMLElement | null): string {
   return textContent;
 }
 
+/**
+ * Generates a unique CSS selector path for an element
+ * Returns a path like: "div#sidebar > nav > ul > li:nth-of-type(2) > a"
+ */
+function getElementPath(element: Element | null): string {
+  if (!element) return '';
+
+  const parts: string[] = [];
+  let current: Element | null = element;
+
+  while (current && current !== document.body && current !== document.documentElement) {
+    let selector = current.tagName.toLowerCase();
+
+    // Add id if present (makes it unique)
+    if (current.id) {
+      selector += `#${current.id}`;
+      parts.unshift(selector);
+      break; // ID is unique, no need to go further up
+    }
+
+    // Add nth-of-type for uniqueness among siblings of same tag
+    const parent = current.parentElement;
+    if (parent) {
+      const siblings = Array.from(parent.children).filter(
+        child => child.tagName === current!.tagName
+      );
+      if (siblings.length > 1) {
+        const index = siblings.indexOf(current) + 1;
+        selector += `:nth-of-type(${index})`;
+      }
+    }
+
+    parts.unshift(selector);
+    current = current.parentElement;
+  }
+
+  return parts.join(' > ');
+}
+
 export function processDomChanges() {
   try {
     // applyConfig(); // Assuming this is part of your process
@@ -80,6 +119,10 @@ export function processDomChanges() {
     });
 
     if (nodes.length > 0) {
+      // Track which content IDs have been assigned to DOM elements
+      // This ensures each DOM element gets a unique ID when multiple IDs share the same text
+      const assignedIds = new Set<string>();
+
       const structuredContent = nodes
         .map((node): ContentNode | null => {
           // Check if it's a Text node with content
@@ -122,9 +165,9 @@ export function processDomChanges() {
             if (isShowingPendingChange) {
               const contentId =
                 node.parentElement?.getAttribute('data-content-key') || '';
-              Array.from(window.memoryMap).forEach((node) => {
-                if (node[1].ids.has(contentId)) {
-                  content = node[1];
+              Array.from(window.memoryMap).forEach((mapEntry) => {
+                if (mapEntry[1].ids.has(contentId)) {
+                  content = mapEntry[1];
                 }
               });
             }
@@ -135,10 +178,15 @@ export function processDomChanges() {
               return null;
             }
 
+            // Find the first unclaimed ID, or fall back to first ID if all are claimed
+            const availableKey = keys.find(k => !assignedIds.has(k)) || keys[0];
+            assignedIds.add(availableKey);
+
             const data: ContentNode = {
               type: 'text',
               text: stripHtmlTags(matchedTemplateText),
-              contentKey: keys,
+              contentKey: [availableKey],
+              elementPath: getElementPath(node.parentElement),
             };
 
             return data;
@@ -158,11 +206,15 @@ export function processDomChanges() {
                 return null;
               }
 
+              // Find the first unclaimed ID, or fall back to first ID if all are claimed
+              const availableKey = keys.find(k => !assignedIds.has(k)) || keys[0];
+              assignedIds.add(availableKey);
+
               return {
                 type: 'image',
                 url: imgElement.src,
                 altText: imgElement.alt,
-                contentKey: keys,
+                contentKey: [availableKey],
               };
             }
 
@@ -201,10 +253,15 @@ export function processDomChanges() {
                 return null;
               }
 
+              // Find the first unclaimed ID, or fall back to first ID if all are claimed
+              const availableKey = keys.find(k => !assignedIds.has(k)) || keys[0];
+              assignedIds.add(availableKey);
+
               const data: ContentNode = {
                 type: 'text',
                 text: stripHtmlTags(matchedTemplateText),
-                contentKey: keys,
+                contentKey: [availableKey],
+                elementPath: getElementPath(inputElement),
               };
 
               return data;
