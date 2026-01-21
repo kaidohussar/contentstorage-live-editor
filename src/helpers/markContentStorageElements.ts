@@ -287,7 +287,8 @@ const shouldSkipTextNodeWrapping = (
 const findAndMarkElements = (
   element: Node,
   content: ContentNode[],
-  templateLookup: Map<string, { template: string; variables?: Record<string, string | number | boolean> }>
+  templateLookup: Map<string, { template: string; variables?: Record<string, string | number | boolean> }>,
+  matchedContentKeys: Set<string>
 ): void => {
   if (element.nodeType === Node.TEXT_NODE && element.textContent?.trim()) {
     // Check if the parent element already has a content key
@@ -311,6 +312,12 @@ const findAndMarkElements = (
 
       matchedItem = content.find((item) => {
         if (item.type === 'text' && parentText) {
+          // Skip if this content key was already matched to another element
+          const itemContentKey = item.contentKey[item.contentKey.length - 1];
+          if (matchedContentKeys.has(itemContentKey)) {
+            return false;
+          }
+
           // O(1) lookup using pre-built template map
           const templateData = templateLookup.get(item.text);
           if (templateData) {
@@ -338,6 +345,9 @@ const findAndMarkElements = (
 
       // Check if we should skip wrapping this text node to prevent duplicates
       if (!shouldSkipTextNodeWrapping(element, contentKey)) {
+        // Mark this content key as matched to prevent reuse for other elements
+        matchedContentKeys.add(contentKey);
+
         // If a match is found and no ancestor/sibling already has this key, track it
         // Use originalTemplate (with HTML) if available, otherwise fall back to matchedItem.text
         const templateText = matchedItem.type === 'image' ? undefined : (originalTemplate || matchedItem.text);
@@ -365,9 +375,17 @@ const findAndMarkElements = (
     if (htmlElement.tagName === 'IMG') {
       const imgElement = htmlElement as HTMLImageElement;
       // Find if this image node's src matches any of the items to be marked.
-      matchedItem = content.find(
-        (item) => item.type === 'image' && item.url === imgElement.src
-      );
+      matchedItem = content.find((item) => {
+        if (item.type === 'image' && item.url === imgElement.src) {
+          // Skip if this content key was already matched to another element
+          const itemContentKey = item.contentKey[item.contentKey.length - 1];
+          if (matchedContentKeys.has(itemContentKey)) {
+            return false;
+          }
+          return true;
+        }
+        return false;
+      });
     } else {
       // It must be an INPUT
       const inputElement = htmlElement as HTMLInputElement;
@@ -377,6 +395,12 @@ const findAndMarkElements = (
       if (contentValue) {
         matchedItem = content.find((item) => {
           if (item.type === 'text') {
+            // Skip if this content key was already matched to another element
+            const itemContentKey = item.contentKey[item.contentKey.length - 1];
+            if (matchedContentKeys.has(itemContentKey)) {
+              return false;
+            }
+
             // O(1) lookup using pre-built template map
             const templateData = templateLookup.get(item.text);
             if (templateData) {
@@ -394,11 +418,12 @@ const findAndMarkElements = (
     }
 
     if (matchedItem) {
+      // Mark this content key as matched to prevent reuse for other elements
+      const contentKey = matchedItem.contentKey[matchedItem.contentKey.length - 1];
+      matchedContentKeys.add(contentKey);
+
       // If a match is found, track the element.
-      trackContentElement(
-        element,
-        matchedItem.contentKey[matchedItem.contentKey.length - 1]
-      );
+      trackContentElement(element, contentKey);
     } else {
       // If no match is found, mark as checked.
       trackContentElement(element, 'checked');
@@ -420,7 +445,7 @@ const findAndMarkElements = (
 
   const childNodes = Array.from(element.childNodes);
   for (const child of childNodes) {
-    findAndMarkElements(child, content, templateLookup);
+    findAndMarkElements(child, content, templateLookup, matchedContentKeys);
   }
 };
 
@@ -453,9 +478,13 @@ export const markContentStorageElements = (
       });
     }
 
+    // Track which content items have already been matched to prevent duplicates
+    // This ensures each content key is only assigned to one DOM element
+    const matchedContentKeys = new Set<string>();
+
     // First, find and wrap matching text in spans with data-content-key
     if (content && content?.length > 0) {
-      findAndMarkElements(document.body, content, templateLookup);
+      findAndMarkElements(document.body, content, templateLookup, matchedContentKeys);
     }
 
     // Then position edit buttons for highlighted content

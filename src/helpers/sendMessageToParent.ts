@@ -1,4 +1,5 @@
 import { MessagePayloadMap, OutgoingMessageType } from '../contants';
+import { isPipMode } from './urlParams';
 
 export const sendMessageToParent = <T extends OutgoingMessageType>(
   msgType: T,
@@ -9,7 +10,15 @@ export const sendMessageToParent = <T extends OutgoingMessageType>(
     payload: data,
   };
 
+  // In PiP mode, use window.opener; in iframe mode, use window.parent
+  const targetWindow = isPipMode() ? window.opener : window.parent;
+
+  if (!targetWindow) {
+    console.error('[Live editor] No target window available');
+    return;
+  }
+
   // Could replace * here for extra security
   console.log('[Live editor] Sending message to parent:', msg);
-  window.parent.postMessage(msg, '*');
+  targetWindow.postMessage(msg, '*');
 };

@@ -11,6 +11,17 @@ declare global {
     currentLanguageCode: string | null;
     __contentstorageRefresh?: () => void;
     __contentstorageApiKey?: string;
+    __contentstorageAPI?: {
+      version: string;
+      isReady: boolean;
+      requestTranslations: () => void;
+      getContentById: (id: string) => string | null;
+      getLanguageCode: () => string | null;
+      getMemoryMapSize: () => number;
+      setTranslations: (languageCode: string, translations: Record<string, string>) => void;
+      clear: () => void;
+      onRefresh: (callback: () => void) => void;
+    };
   }
 }
 

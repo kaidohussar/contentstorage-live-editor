@@ -39,7 +39,7 @@ export type MessagePayloadMap = {
 
 export type IncomingMessagePayloadMap = {
   [INCOMING_MESSAGE_TYPES.SHOW_PENDING_CHANGES]: PendingChangeSimple[];
-  [INCOMING_MESSAGE_TYPES.REQUEST_SCREENSHOT]: null;
+  [INCOMING_MESSAGE_TYPES.REQUEST_SCREENSHOT]: { quality?: number } | null;
   [INCOMING_MESSAGE_TYPES.HIDE_ELEMENT_HIGHLIGHT]: { contentKey: string };
   [INCOMING_MESSAGE_TYPES.SHOW_ELEMENT_HIGHLIGHT]: { contentKey: string };
 };

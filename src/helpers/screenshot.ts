@@ -6,10 +6,11 @@ import { isScreenshotModeEnabled } from './urlParams';
 
 /**
  * Get screenshot options configured for snapdom
+ * @param quality - Quality of the screenshot (0-1), defaults to 0.95
  */
-const getScreenshotOptions = () => ({
+const getScreenshotOptions = (quality = 0.95) => ({
   type: 'png' as const,
-  quality: 0.95,
+  quality,
   dpr: window.devicePixelRatio,
   backgroundColor: '#ffffff',
   fast: true,
@@ -89,8 +90,9 @@ const refreshContent = async (): Promise<void> => {
   }
 };
 
-export const handleScreenshotRequest = async (): Promise<void> => {
+export const handleScreenshotRequest = async (quality?: number): Promise<void> => {
   console.log('[Live editor] Screenshot request received from Contentstorage');
+  console.log(`[Live editor] Screenshot quality set to ${quality ?? 0.95}`);
 
   // Store references for cleanup
   let hiddenButtons: HTMLElement[] = [];
@@ -105,7 +107,7 @@ export const handleScreenshotRequest = async (): Promise<void> => {
 
     // Step 2: Capture screenshot with snapdom (returns blob directly)
     console.log('[Live editor] Capturing viewport with snapdom...');
-    const options = getScreenshotOptions();
+    const options = getScreenshotOptions(quality);
 
     const blob = await snapdom.toBlob(document.body, options);
 
@@ -144,6 +146,7 @@ export const handleScreenshotRequest = async (): Promise<void> => {
         success: true,
         content: activeContent,
         language: window.currentLanguageCode,
+        path: window.location.pathname,
       };
 
       sendMessageToParent(

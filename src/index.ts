@@ -21,7 +21,7 @@ import { sendMessageToParent } from './helpers/sendMessageToParent';
 import { PendingChangeSimple } from './types';
 import { clearPendingChanges, setPendingChanges } from './helpers/misc';
 import { handleScreenshotRequest } from './helpers/screenshot';
-import { isScreenshotModeEnabled } from './helpers/urlParams';
+import { isScreenshotModeEnabled, isPipMode, isPipModeReconnection } from './helpers/urlParams';
 import { createCameraButton } from './helpers/screenshotMode';
 
 (function () {
@@ -58,12 +58,16 @@ import { createCameraButton } from './helpers/screenshotMode';
   }
 
   const isInIframe = window.parent && window.parent !== window;
-  const isStandaloneScreenshotMode = !isInIframe && isScreenshotModeEnabled();
+  const isInPipMode = isPipMode() && window.opener && window.opener !== window;
+  const isStandaloneScreenshotMode = !isInIframe && !isInPipMode && isScreenshotModeEnabled();
 
-  if (isInIframe || isStandaloneScreenshotMode) {
+  if (isInIframe || isInPipMode || isStandaloneScreenshotMode) {
+    const isReconnection = isPipModeReconnection();
     console.log(
       isInIframe
         ? '[Live editor] Running inside an iframe. Setting up communication with parent and initiating handshake.'
+        : isInPipMode
+        ? `[Live editor] Running in PiP mode (opened via window.open)${isReconnection ? ' - RECONNECTING after navigation/OAuth' : ''}. Setting up communication with opener.`
         : '[Live editor] Running in standalone screenshot mode.'
     );
 
@@ -87,13 +91,16 @@ import { createCameraButton } from './helpers/screenshotMode';
 
       console.log('[Live editor] Standalone screenshot mode ready');
     } else {
-      // Iframe mode - setup handshake with parent
+      // Iframe/PiP mode - setup handshake with parent/opener
       let handshakeSuccessful = false;
       let handshakeTimeoutId: number | undefined;
 
-      // Handler for messages from the parent
+      // Determine expected message source based on mode
+      const expectedSource = isInPipMode ? window.opener : window.parent;
+
+      // Handler for messages from the parent/opener
       const messageFromParentHandler = (event: MessageEvent) => {
-        if (event.source === window.parent && event.data) {
+        if (event.source === expectedSource && event.data) {
           if (
             event.data.type === INCOMING_MESSAGE_TYPES.HANDSHAKE_ACKNOWLEDGE
           ) {
@@ -190,7 +197,7 @@ import { createCameraButton } from './helpers/screenshotMode';
               if (
                 event.data.type === INCOMING_MESSAGE_TYPES.REQUEST_SCREENSHOT
               ) {
-                handleScreenshotRequest();
+                handleScreenshotRequest(event.data.payload?.quality);
               }
 
               // Process other messages here
@@ -236,7 +243,7 @@ import { createCameraButton } from './helpers/screenshotMode';
     }
   } else {
     console.log(
-      '[Live editor] Not running inside an iframe, or parent is not accessible. Skipping parent communication setup.'
+      '[Live editor] Not running inside an iframe or PiP mode, or opener/parent is not accessible. Skipping parent communication setup.'
     );
   }
 })();

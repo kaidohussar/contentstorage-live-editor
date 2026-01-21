@@ -16,6 +16,7 @@ export type ScreenshotResponsePayload =
       success: true;
       content: ScreenshotContentItem[];
       language: string | null;
+      path: string;
     }
   | {
       screenshotDataUrl: '';

@@ -16,7 +16,31 @@ const packageJson = JSON.parse(
 );
 const version = packageJson.version;
 
-export default {
+// Shared plugins configuration
+const getPlugins = () => [
+  resolve({
+    browser: true,
+  }),
+  commonjs(),
+  typescript({
+    tsconfig: './tsconfig.json',
+  }),
+  babel({
+    babelHelpers: 'bundled',
+    exclude: 'node_modules/**',
+    presets: [
+      [
+        '@babel/preset-env',
+        {
+          targets: 'last 2 years',
+        },
+      ],
+    ],
+  }),
+];
+
+// Live Editor bundle (existing)
+const liveEditorConfig = {
   input: 'src/index.ts',
   output: [
     {
@@ -26,29 +50,10 @@ export default {
     },
   ],
   plugins: [
-    resolve({
-      browser: true, // Use browser-friendly modules
-    }),
-    commonjs(), // Convert CommonJS modules to ES6
-    typescript({
-      tsconfig: './tsconfig.json', // Explicitly specify tsconfig
-    }),
-    babel({
-      babelHelpers: 'bundled', // Bundles Babel helpers, avoids external dependencies
-      exclude: 'node_modules/**', // Don't transpile external libraries
-      presets: [
-        [
-          '@babel/preset-env',
-          {
-            targets: 'last 2 years',
-          },
-        ],
-      ],
-    }),
+    ...getPlugins(),
     terser({
       format: {
         comments: (node, comment) => {
-          // Preserve comments that contain "Contentstorage Live Editor"
           return (
             comment.type === 'comment2' &&
             /Contentstorage Live Editor/.test(comment.value)
@@ -59,3 +64,35 @@ export default {
     }),
   ],
 };
+
+// Browser Script bundle (new, IIFE format, optimized for size)
+const browserScriptConfig = {
+  input: 'src/browser-script/index.ts',
+  output: [
+    {
+      file: 'dist/browser-script.js',
+      format: 'iife',
+      banner: `// Contentstorage Browser Script v${version} - Built ${new Date().toISOString()}`,
+    },
+  ],
+  plugins: [
+    ...getPlugins(),
+    terser({
+      compress: {
+        passes: 2,
+        pure_getters: true,
+      },
+      format: {
+        comments: (node, comment) => {
+          return (
+            comment.type === 'comment2' &&
+            /Contentstorage Browser Script/.test(comment.value)
+          );
+        },
+        preamble: `// Contentstorage Browser Script v${version} - Built ${new Date().toISOString()}`,
+      },
+    }),
+  ],
+};
+
+export default [liveEditorConfig, browserScriptConfig];
