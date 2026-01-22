@@ -129,7 +129,23 @@ import { createCameraButton } from './helpers/screenshotMode';
               console.log(
                 '[Live editor] Parent communication handshake successful. Ready for further messages.'
               );
-              // Start
+
+              // In PiP mode, send visibility change events to the opener
+              if (isInPipMode) {
+                // Send initial visibility state
+                sendMessageToParent(OUTGOING_MESSAGE_TYPES.VISIBILITY_CHANGE, {
+                  isVisible: document.visibilityState === 'visible',
+                });
+
+                // Listen for visibility changes
+                document.addEventListener('visibilitychange', () => {
+                  const isVisible = document.visibilityState === 'visible';
+                  console.log('[Live editor] Visibility changed:', isVisible);
+                  sendMessageToParent(OUTGOING_MESSAGE_TYPES.VISIBILITY_CHANGE, {
+                    isVisible,
+                  });
+                });
+              }
             }
           } else {
             // Handle other types of messages from the parent after handshake

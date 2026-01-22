@@ -24,6 +24,7 @@ export const OUTGOING_MESSAGE_TYPES = {
   CLICK_CONTENT_ITEM_EDIT_BTN: 'contentstorage-click-item-edit-btn',
   FOUND_CONTENT_NODES: 'contentstorage-found-content-nodes',
   SCREENSHOT_RESPONSE: 'contentstorage-screenshot-response',
+  VISIBILITY_CHANGE: 'contentstorage-visibility-change',
 } as const;
 
 export type MessagePayloadMap = {
@@ -35,6 +36,9 @@ export type MessagePayloadMap = {
     contentNodes: ContentNode[];
   };
   [OUTGOING_MESSAGE_TYPES.SCREENSHOT_RESPONSE]: ScreenshotResponsePayload;
+  [OUTGOING_MESSAGE_TYPES.VISIBILITY_CHANGE]: {
+    isVisible: boolean;
+  };
 };
 
 export type IncomingMessagePayloadMap = {
