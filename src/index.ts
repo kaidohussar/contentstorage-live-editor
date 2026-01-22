@@ -17,7 +17,7 @@ import {
   mutationObserverConfig,
   processDomChanges,
 } from './helpers/mutationObserver';
-import { sendMessageToParent } from './helpers/sendMessageToParent';
+import { sendMessageToParent, setParentWindowRef } from './helpers/sendMessageToParent';
 import { PendingChangeSimple } from './types';
 import { clearPendingChanges, setPendingChanges } from './helpers/misc';
 import { handleScreenshotRequest } from './helpers/screenshot';
@@ -59,15 +59,19 @@ import { createCameraButton } from './helpers/screenshotMode';
 
   const isInIframe = window.parent && window.parent !== window;
   const isInPipMode = isPipMode() && window.opener && window.opener !== window;
-  const isStandaloneScreenshotMode = !isInIframe && !isInPipMode && isScreenshotModeEnabled();
+  // Detect if we need reconnection: pip_mode flag is set but window.opener is gone (after refresh/OAuth)
+  const needsReconnection = isPipMode() && (!window.opener || window.opener === window);
+  const isStandaloneScreenshotMode = !isInIframe && !isInPipMode && !needsReconnection && isScreenshotModeEnabled();
 
-  if (isInIframe || isInPipMode || isStandaloneScreenshotMode) {
-    const isReconnection = isPipModeReconnection();
+  if (isInIframe || isInPipMode || needsReconnection || isStandaloneScreenshotMode) {
+    const isReconnection = isPipModeReconnection() || needsReconnection;
     console.log(
       isInIframe
         ? '[Live editor] Running inside an iframe. Setting up communication with parent and initiating handshake.'
         : isInPipMode
         ? `[Live editor] Running in PiP mode (opened via window.open)${isReconnection ? ' - RECONNECTING after navigation/OAuth' : ''}. Setting up communication with opener.`
+        : needsReconnection
+        ? '[Live editor] Running in PiP mode - NEEDS RECONNECTION (window.opener lost after refresh). Waiting for parent ping.'
         : '[Live editor] Running in standalone screenshot mode.'
     );
 
@@ -94,12 +98,48 @@ import { createCameraButton } from './helpers/screenshotMode';
       // Iframe/PiP mode - setup handshake with parent/opener
       let handshakeSuccessful = false;
       let handshakeTimeoutId: number | undefined;
+      let visibilityListenerSetup = false;
 
-      // Determine expected message source based on mode
-      const expectedSource = isInPipMode ? window.opener : window.parent;
+      // Determine expected message source based on mode (mutable for reconnection)
+      let expectedSource: Window | null = isInPipMode ? window.opener : window.parent;
+
+      // Setup visibility change listener for PiP mode
+      const setupVisibilityListener = () => {
+        if (visibilityListenerSetup) return;
+        visibilityListenerSetup = true;
+
+        // Send initial visibility state
+        sendMessageToParent(OUTGOING_MESSAGE_TYPES.VISIBILITY_CHANGE, {
+          isVisible: document.visibilityState === 'visible',
+        });
+
+        // Listen for visibility changes
+        document.addEventListener('visibilitychange', () => {
+          const isVisible = document.visibilityState === 'visible';
+          console.log('[Live editor] Visibility changed:', isVisible);
+          sendMessageToParent(OUTGOING_MESSAGE_TYPES.VISIBILITY_CHANGE, {
+            isVisible,
+          });
+        });
+      };
 
       // Handler for messages from the parent/opener
       const messageFromParentHandler = (event: MessageEvent) => {
+        // Handle RECONNECT_PING - only respond if handshake not yet successful
+        // This allows parent to re-establish connection after child refresh
+        if (event.data?.type === INCOMING_MESSAGE_TYPES.RECONNECT_PING) {
+          if (!handshakeSuccessful && event.source && event.source !== window) {
+            console.log('[Live editor] Received RECONNECT_PING, responding (handshake not complete)');
+            // Update expected source reference from event.source
+            expectedSource = event.source as Window;
+            setParentWindowRef(event.source as Window);
+            // Send RECONNECT_PONG back to parent
+            sendMessageToParent(OUTGOING_MESSAGE_TYPES.RECONNECT_PONG, null);
+          }
+          // Ignore RECONNECT_PING if handshake already successful
+          return;
+        }
+
         if (event.source === expectedSource && event.data) {
           if (
             event.data.type === INCOMING_MESSAGE_TYPES.HANDSHAKE_ACKNOWLEDGE
@@ -121,30 +161,14 @@ import { createCameraButton } from './helpers/screenshotMode';
               console.log('[Live editor] Started observing DOM for mutations');
               observer.observe(document.body, mutationObserverConfig);
 
-              console.log(
-                '[Live editor] Received handshake acknowledgment from parent:',
-                event.data.payload
-              );
               cleanupHandshakeResources();
               console.log(
                 '[Live editor] Parent communication handshake successful. Ready for further messages.'
               );
 
-              // In PiP mode, send visibility change events to the opener
-              if (isInPipMode) {
-                // Send initial visibility state
-                sendMessageToParent(OUTGOING_MESSAGE_TYPES.VISIBILITY_CHANGE, {
-                  isVisible: document.visibilityState === 'visible',
-                });
-
-                // Listen for visibility changes
-                document.addEventListener('visibilitychange', () => {
-                  const isVisible = document.visibilityState === 'visible';
-                  console.log('[Live editor] Visibility changed:', isVisible);
-                  sendMessageToParent(OUTGOING_MESSAGE_TYPES.VISIBILITY_CHANGE, {
-                    isVisible,
-                  });
-                });
+              // In PiP mode (including reconnection), send visibility change events
+              if (isInPipMode || needsReconnection) {
+                setupVisibilityListener();
               }
             }
           } else {
@@ -233,29 +257,30 @@ import { createCameraButton } from './helpers/screenshotMode';
           handshakeTimeoutId = undefined;
         }
         // We keep the general message listener active for further communication
-        // window.removeEventListener("message", messageFromParentHandler); // Only remove if no further messages are expected
       };
 
       // Add listener for parent's response (for handshake and subsequent messages)
       window.addEventListener('message', messageFromParentHandler);
 
-      sendMessageToParent(
-        OUTGOING_MESSAGE_TYPES.HANDSHAKE_INITIATE,
-        `Hello from iframe script (editor param: ${liveEditorParamValue}). Initiating handshake.`
-      );
+      // In reconnection mode, don't send handshake - wait for RECONNECT_PING instead
+      if (needsReconnection) {
+        console.log('[Live editor] Waiting for RECONNECT_PING from parent...');
+      } else {
+        sendMessageToParent(
+          OUTGOING_MESSAGE_TYPES.HANDSHAKE_INITIATE,
+          `Hello from iframe script (editor param: ${liveEditorParamValue}). Initiating handshake.`
+        );
 
-      // Timeout for the initial handshake
-      handshakeTimeoutId = window.setTimeout(() => {
-        if (!handshakeSuccessful) {
-          console.warn(
-            'CDN Script: Parent communication handshake timed out. Parent did not respond or acknowledge correctly.'
-          );
-          cleanupHandshakeResources(); // Clean up timeout
-          // Still keep the general message listener in case parent responds late or for other messages,
-          // or decide to remove it if handshake is strictly required to proceed.
-          // document.body.innerHTML = `<p style="color:red;">Error: Could not establish initial communication with the parent application (handshake timeout).</p>`;
-        }
-      }, COMMUNICATION_TIMEOUT_MS);
+        // Timeout for the initial handshake (not needed for reconnection mode)
+        handshakeTimeoutId = window.setTimeout(() => {
+          if (!handshakeSuccessful) {
+            console.warn(
+              'CDN Script: Parent communication handshake timed out. Parent did not respond or acknowledge correctly.'
+            );
+            cleanupHandshakeResources();
+          }
+        }, COMMUNICATION_TIMEOUT_MS);
+      }
     }
   } else {
     console.log(

@@ -17,6 +17,7 @@ export const INCOMING_MESSAGE_TYPES = {
   SHOW_PENDING_CHANGES: 'contentstorage-show-pending-changes',
   SHOW_ORIGINAL_CONTENT: 'contentstorage-show-original-content',
   REQUEST_SCREENSHOT: 'contentstorage-request-screenshot',
+  RECONNECT_PING: 'contentstorage-reconnect-ping',
 } as const;
 
 export const OUTGOING_MESSAGE_TYPES = {
@@ -25,6 +26,7 @@ export const OUTGOING_MESSAGE_TYPES = {
   FOUND_CONTENT_NODES: 'contentstorage-found-content-nodes',
   SCREENSHOT_RESPONSE: 'contentstorage-screenshot-response',
   VISIBILITY_CHANGE: 'contentstorage-visibility-change',
+  RECONNECT_PONG: 'contentstorage-reconnect-pong',
 } as const;
 
 export type MessagePayloadMap = {
@@ -39,6 +41,7 @@ export type MessagePayloadMap = {
   [OUTGOING_MESSAGE_TYPES.VISIBILITY_CHANGE]: {
     isVisible: boolean;
   };
+  [OUTGOING_MESSAGE_TYPES.RECONNECT_PONG]: null;
 };
 
 export type IncomingMessagePayloadMap = {
