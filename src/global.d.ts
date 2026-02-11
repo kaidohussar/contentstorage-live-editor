@@ -9,6 +9,7 @@ declare global {
       }
     >;
     currentLanguageCode: string | null;
+    isStandaloneMode?: boolean; // True when browser script is loaded (no SDK translations)
     __contentstorageRefresh?: () => void;
     __contentstorageApiKey?: string;
     __contentstorageAPI?: {

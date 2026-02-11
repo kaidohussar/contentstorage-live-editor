@@ -18,6 +18,7 @@ export const INCOMING_MESSAGE_TYPES = {
   SHOW_ORIGINAL_CONTENT: 'contentstorage-show-original-content',
   REQUEST_SCREENSHOT: 'contentstorage-request-screenshot',
   RECONNECT_PING: 'contentstorage-reconnect-ping',
+  SET_CONTENT_KEYS: 'contentstorage-set-content-keys',
 } as const;
 
 export const OUTGOING_MESSAGE_TYPES = {
@@ -30,12 +31,16 @@ export const OUTGOING_MESSAGE_TYPES = {
 } as const;
 
 export type MessagePayloadMap = {
-  [OUTGOING_MESSAGE_TYPES.HANDSHAKE_INITIATE]: string;
+  [OUTGOING_MESSAGE_TYPES.HANDSHAKE_INITIATE]: {
+    message?: string;
+    isStandalone?: boolean;
+  };
   [OUTGOING_MESSAGE_TYPES.CLICK_CONTENT_ITEM_EDIT_BTN]: {
     contentKey: string;
   };
   [OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES]: {
     contentNodes: ContentNode[];
+    language?: string | null; // Detected page language (e.g., "EN", "DE")
   };
   [OUTGOING_MESSAGE_TYPES.SCREENSHOT_RESPONSE]: ScreenshotResponsePayload;
   [OUTGOING_MESSAGE_TYPES.VISIBILITY_CHANGE]: {
@@ -44,11 +49,18 @@ export type MessagePayloadMap = {
   [OUTGOING_MESSAGE_TYPES.RECONNECT_PONG]: null;
 };
 
+export type TextMatch = {
+  text: string;
+  contentKey: string | null;
+  elementPath?: string;
+};
+
 export type IncomingMessagePayloadMap = {
   [INCOMING_MESSAGE_TYPES.SHOW_PENDING_CHANGES]: PendingChangeSimple[];
-  [INCOMING_MESSAGE_TYPES.REQUEST_SCREENSHOT]: { quality?: number } | null;
+  [INCOMING_MESSAGE_TYPES.REQUEST_SCREENSHOT]: { quality?: number; maxWidth?: number } | null;
   [INCOMING_MESSAGE_TYPES.HIDE_ELEMENT_HIGHLIGHT]: { contentKey: string };
   [INCOMING_MESSAGE_TYPES.SHOW_ELEMENT_HIGHLIGHT]: { contentKey: string };
+  [INCOMING_MESSAGE_TYPES.SET_CONTENT_KEYS]: { matches: TextMatch[] };
 };
 
 export const COMMUNICATION_TIMEOUT_MS = 5000; // 5 seconds

@@ -95,4 +95,34 @@ const browserScriptConfig = {
   ],
 };
 
-export default [liveEditorConfig, browserScriptConfig];
+// Loader Snippet - tiny inline script for user's <head> tag
+// Outputs minified IIFE that conditionally loads browser-script.js
+const loaderSnippetConfig = {
+  input: 'src/loader-snippet.ts',
+  output: [
+    {
+      file: 'dist/loader-snippet.js',
+      format: 'iife',
+    },
+  ],
+  plugins: [
+    typescript({
+      tsconfig: './tsconfig.json',
+    }),
+    terser({
+      compress: {
+        passes: 3,
+        pure_getters: true,
+        toplevel: true,
+      },
+      mangle: {
+        toplevel: true,
+      },
+      format: {
+        comments: false,
+      },
+    }),
+  ],
+};
+
+export default [liveEditorConfig, browserScriptConfig, loaderSnippetConfig];

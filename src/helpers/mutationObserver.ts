@@ -9,6 +9,11 @@ import {
 import { getPendingChanges, throttle } from './misc';
 import { renderTemplate } from './variableMatching';
 import { normalizeWhitespace, stripHtmlTags } from './htmlUtils';
+import { detectPageLanguage } from './detectLanguage';
+
+// Module-level observer reference for pause/resume control
+let observerInstance: MutationObserver | null = null;
+let isObserving = false;
 
 function isInternalWrapper(node: Node): boolean {
   if (node.nodeType !== Node.ELEMENT_NODE) {
@@ -99,194 +104,255 @@ function getElementPath(element: Element | null): string {
   return parts.join(' > ');
 }
 
-export function processDomChanges() {
-  try {
-    // applyConfig(); // Assuming this is part of your process
-    const nodes = findContentNodesInPage();
+/**
+ * Finds and processes content nodes from the DOM
+ * Returns structured content ready for sending to parent or highlighting
+ */
+function findAndProcessNodes(): { structuredContent: ContentNode[], detectedLanguage: string | null } {
+  const nodes = findContentNodesInPage();
 
-    // Track processed parent elements to avoid duplicates when text nodes are fragmented by HTML tags
-    const processedParents = new Set<HTMLElement>();
+  // Track processed parent elements to avoid duplicates when text nodes are fragmented by HTML tags
+  const processedParents = new Set<HTMLElement>();
 
-    // Log memoryMap content for debugging
-    console.log('[Live editor] memoryMap content:', {
-      size: window.memoryMap?.size || 0,
-      entries: Array.from(window.memoryMap?.entries() || []).map(([key, value]) => ({
-        template: key,
-        ids: Array.from(value.ids),
-        type: value.type,
-        variables: value.variables,
-      })),
-    });
+  // Log memoryMap content for debugging
+  console.log('[Live editor] memoryMap content:', {
+    size: window.memoryMap?.size || 0,
+    entries: Array.from(window.memoryMap?.entries() || []).map(([key, value]) => ({
+      template: key,
+      ids: Array.from(value.ids),
+      type: value.type,
+      variables: value.variables,
+    })),
+  });
 
-    if (nodes.length > 0) {
-      // Track which content IDs have been assigned to DOM elements
-      // This ensures each DOM element gets a unique ID when multiple IDs share the same text
-      const assignedIds = new Set<string>();
+  if (nodes.length === 0) {
+    return { structuredContent: [], detectedLanguage: null };
+  }
 
-      const structuredContent = nodes
-        .map((node): ContentNode | null => {
-          // Check if it's a Text node with content
-          if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
-            // Skip if we've already processed this parent element
-            if (node.parentElement && processedParents.has(node.parentElement)) {
-              return null;
-            }
+  // Track which content IDs have been assigned to DOM elements
+  // This ensures each DOM element gets a unique ID when multiple IDs share the same text
+  const assignedIds = new Set<string>();
 
-            let content = window.memoryMap?.get(node.textContent);
-            let matchedTemplateText = node.textContent; // Track the template text
-
-            // If direct lookup fails, try exact matching with renderTemplate using parent's textContent
-            if (!content && node.parentElement) {
-              const parentText = getCleanTextContent(node.parentElement).trim();
-              if (parentText) {
-                const normalizedParentText = normalizeWhitespace(parentText);
-
-                // Search through all templates and do exact matching
-                for (const [templateText, contentData] of window.memoryMap) {
-                  // Render template (handles variables + HTML stripping + whitespace normalization)
-                  const rendered = renderTemplate(templateText, contentData.variables);
-
-                  // Exact comparison using parent's combined text
-                  if (rendered === normalizedParentText) {
-                    content = contentData;
-                    matchedTemplateText = templateText; // Store the matched template
-                    // Mark this parent as processed to avoid duplicate matches
-                    processedParents.add(node.parentElement);
-                    break;
-                  }
-                }
-              }
-            }
-
-            const isShowingPendingChange = node.parentElement?.getAttribute(
-              'data-content-showing-pending-change'
-            );
-
-            if (isShowingPendingChange) {
-              const contentId =
-                node.parentElement?.getAttribute('data-content-key') || '';
-              Array.from(window.memoryMap).forEach((mapEntry) => {
-                if (mapEntry[1].ids.has(contentId)) {
-                  content = mapEntry[1];
-                }
-              });
-            }
-
-            const keys = Array.from(content?.ids || []);
-
-            if (keys.length === 0) {
-              return null;
-            }
-
-            // Find the first unclaimed ID, or fall back to first ID if all are claimed
-            const availableKey = keys.find(k => !assignedIds.has(k)) || keys[0];
-            assignedIds.add(availableKey);
-
-            const data: ContentNode = {
-              type: 'text',
-              text: stripHtmlTags(matchedTemplateText),
-              contentKey: [availableKey],
-              elementPath: getElementPath(node.parentElement),
-            };
-
-            return data;
-          }
-
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            const element = node as HTMLElement;
-
-            if (element.tagName === 'IMG') {
-              const imgElement = element as HTMLImageElement;
-
-              const keys = Array.from(
-                window.memoryMap?.get(imgElement.src)?.ids || []
-              );
-
-              if (keys.length === 0) {
-                return null;
-              }
-
-              // Find the first unclaimed ID, or fall back to first ID if all are claimed
-              const availableKey = keys.find(k => !assignedIds.has(k)) || keys[0];
-              assignedIds.add(availableKey);
-
-              return {
-                type: 'image',
-                url: imgElement.src,
-                altText: imgElement.alt,
-                contentKey: [availableKey],
-              };
-            }
-
-            if (element.tagName === 'INPUT') {
-              const inputElement = element as HTMLInputElement;
-              const contentValue =
-                inputElement.placeholder?.trim() ||
-                inputElement.getAttribute('aria-label')?.trim();
-
-              if (!contentValue) {
-                return null;
-              }
-
-              let content = window.memoryMap?.get(contentValue);
-              let matchedTemplateText = contentValue; // Track the template text
-
-              // If direct lookup fails, try exact matching with renderTemplate
-              if (!content) {
-                const normalizedValue = normalizeWhitespace(contentValue);
-
-                // Search through all templates and do exact matching
-                for (const [templateText, contentData] of window.memoryMap) {
-                  const rendered = renderTemplate(templateText, contentData.variables);
-
-                  if (rendered === normalizedValue) {
-                    content = contentData;
-                    matchedTemplateText = templateText; // Store the matched template
-                    break;
-                  }
-                }
-              }
-
-              const keys = Array.from(content?.ids || []);
-
-              if (keys.length === 0) {
-                return null;
-              }
-
-              // Find the first unclaimed ID, or fall back to first ID if all are claimed
-              const availableKey = keys.find(k => !assignedIds.has(k)) || keys[0];
-              assignedIds.add(availableKey);
-
-              const data: ContentNode = {
-                type: 'text',
-                text: stripHtmlTags(matchedTemplateText),
-                contentKey: [availableKey],
-                elementPath: getElementPath(inputElement),
-              };
-
-              return data;
-            }
-          }
-
-          // Return null for any nodes we want to ignore
+  const structuredContent = nodes
+    .map((node): ContentNode | null => {
+      // Check if it's a Text node with content
+      if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
+        // Skip if we've already processed this parent element
+        if (node.parentElement && processedParents.has(node.parentElement)) {
           return null;
-        })
-        .filter(Boolean) as ContentNode[];
+        }
 
-      console.log('[Live editor] Sending nodes to parent:', structuredContent);
+        let content = window.memoryMap?.get(node.textContent);
+        let matchedTemplateText = node.textContent; // Track the template text
+
+        // If direct lookup fails, try exact matching with renderTemplate using parent's textContent
+        if (!content && node.parentElement) {
+          const parentText = getCleanTextContent(node.parentElement).trim();
+          if (parentText) {
+            const normalizedParentText = normalizeWhitespace(parentText);
+
+            // Search through all templates and do exact matching
+            for (const [templateText, contentData] of window.memoryMap) {
+              // Render template (handles variables + HTML stripping + whitespace normalization)
+              const rendered = renderTemplate(templateText, contentData.variables);
+
+              // Exact comparison using parent's combined text
+              if (rendered === normalizedParentText) {
+                content = contentData;
+                matchedTemplateText = templateText; // Store the matched template
+                // Mark this parent as processed to avoid duplicate matches
+                processedParents.add(node.parentElement);
+                break;
+              }
+            }
+          }
+        }
+
+        const isShowingPendingChange = node.parentElement?.getAttribute(
+          'data-content-showing-pending-change'
+        );
+
+        if (isShowingPendingChange) {
+          const contentId =
+            node.parentElement?.getAttribute('data-content-key') || '';
+          Array.from(window.memoryMap).forEach((mapEntry) => {
+            if (mapEntry[1].ids.has(contentId)) {
+              content = mapEntry[1];
+            }
+          });
+        }
+
+        const keys = Array.from(content?.ids || []);
+
+        // In standalone mode, report nodes even without keys - parent will match via API
+        // In SDK mode, skip nodes without matching content keys
+        if (keys.length === 0 && !window.isStandaloneMode) {
+          return null;
+        }
+
+        // Find the first unclaimed ID, or fall back to first ID if all are claimed
+        const availableKey = keys.length > 0
+          ? (keys.find(k => !assignedIds.has(k)) || keys[0])
+          : null;
+        if (availableKey) {
+          assignedIds.add(availableKey);
+        }
+
+        const data: ContentNode = {
+          type: 'text',
+          text: stripHtmlTags(matchedTemplateText),
+          contentKey: availableKey ? [availableKey] : [],
+          elementPath: getElementPath(node.parentElement),
+        };
+
+        return data;
+      }
+
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const element = node as HTMLElement;
+
+        if (element.tagName === 'IMG') {
+          const imgElement = element as HTMLImageElement;
+
+          const keys = Array.from(
+            window.memoryMap?.get(imgElement.src)?.ids || []
+          );
+
+          // In standalone mode, report images even without keys - parent will match via API
+          // In SDK mode, skip images without matching content keys
+          if (keys.length === 0 && !window.isStandaloneMode) {
+            return null;
+          }
+
+          // Find the first unclaimed ID, or fall back to first ID if all are claimed
+          const availableKey = keys.length > 0
+            ? (keys.find(k => !assignedIds.has(k)) || keys[0])
+            : null;
+          if (availableKey) {
+            assignedIds.add(availableKey);
+          }
+
+          return {
+            type: 'image',
+            url: imgElement.src,
+            altText: imgElement.alt,
+            contentKey: availableKey ? [availableKey] : [],
+          };
+        }
+
+        if (element.tagName === 'INPUT') {
+          const inputElement = element as HTMLInputElement;
+          const contentValue =
+            inputElement.placeholder?.trim() ||
+            inputElement.getAttribute('aria-label')?.trim();
+
+          if (!contentValue) {
+            return null;
+          }
+
+          let content = window.memoryMap?.get(contentValue);
+          let matchedTemplateText = contentValue; // Track the template text
+
+          // If direct lookup fails, try exact matching with renderTemplate
+          if (!content) {
+            const normalizedValue = normalizeWhitespace(contentValue);
+
+            // Search through all templates and do exact matching
+            for (const [templateText, contentData] of window.memoryMap) {
+              const rendered = renderTemplate(templateText, contentData.variables);
+
+              if (rendered === normalizedValue) {
+                content = contentData;
+                matchedTemplateText = templateText; // Store the matched template
+                break;
+              }
+            }
+          }
+
+          const keys = Array.from(content?.ids || []);
+
+          // In standalone mode, report inputs even without keys - parent will match via API
+          // In SDK mode, skip inputs without matching content keys
+          if (keys.length === 0 && !window.isStandaloneMode) {
+            return null;
+          }
+
+          // Find the first unclaimed ID, or fall back to first ID if all are claimed
+          const availableKey = keys.length > 0
+            ? (keys.find(k => !assignedIds.has(k)) || keys[0])
+            : null;
+          if (availableKey) {
+            assignedIds.add(availableKey);
+          }
+
+          const data: ContentNode = {
+            type: 'text',
+            text: stripHtmlTags(matchedTemplateText),
+            contentKey: availableKey ? [availableKey] : [],
+            elementPath: getElementPath(inputElement),
+          };
+
+          return data;
+        }
+      }
+
+      // Return null for any nodes we want to ignore
+      return null;
+    })
+    .filter(Boolean) as ContentNode[];
+
+  // Detect language for standalone mode - helps parent match texts to correct language content
+  const detectedLanguage = window.isStandaloneMode ? detectPageLanguage() : null;
+
+  return { structuredContent, detectedLanguage };
+}
+
+/**
+ * Applies highlighting to content elements
+ * This is an internal helper used by both processDomChanges and refreshHighlighting
+ */
+function applyHighlighting(structuredContent: ContentNode[]) {
+  const shouldHighlight = getConfig().highlightEditableContent;
+  const shouldShowPendingChanges = getConfig().showPendingChanges;
+  const highlight = shouldHighlight === undefined ? true : shouldHighlight;
+
+  markContentStorageElements(structuredContent, highlight);
+
+  if (shouldShowPendingChanges) {
+    showPendingChanges(getPendingChanges());
+  }
+}
+
+/**
+ * Full DOM processing: finds nodes, sends to parent, and applies highlighting
+ * Used by MutationObserver for real DOM changes
+ *
+ * In standalone mode (browser script without SDK), this function should NOT be called
+ * automatically on DOM mutations. Instead, highlighting is applied only after
+ * SET_CONTENT_KEYS message provides content keys from AI analysis.
+ */
+export function processDomChanges() {
+  // In standalone mode, still apply highlighting but don't send content nodes
+  // This allows existing memoryMap entries to highlight content after page navigation
+  if (window.isStandaloneMode) {
+    console.log('[Live editor] Standalone mode - applying highlighting without sending nodes');
+    refreshHighlighting();
+    return;
+  }
+
+  try {
+    const { structuredContent, detectedLanguage } = findAndProcessNodes();
+
+    if (structuredContent.length > 0) {
+      // Send nodes to parent
+      console.log('[Live editor] Sending nodes to parent:', structuredContent, 'language:', detectedLanguage);
       sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
         contentNodes: structuredContent,
+        language: detectedLanguage,
       });
 
-      const shouldHighlight = getConfig().highlightEditableContent;
-      const shouldShowPendingChanges = getConfig().showPendingChanges;
-      const highlight = shouldHighlight === undefined ? true : shouldHighlight;
-
-      markContentStorageElements(structuredContent, highlight);
-
-      if (shouldShowPendingChanges) {
-        showPendingChanges(getPendingChanges());
-      }
+      // Apply highlighting
+      applyHighlighting(structuredContent);
 
       console.log(
         '[Live editor] Significant mutation detected. Processing and sending text nodes.'
@@ -297,6 +363,68 @@ export function processDomChanges() {
   }
 }
 
+/**
+ * Refresh highlighting only - does NOT send nodes to parent
+ * Used after receiving SET_CONTENT_KEYS to apply highlighting with new keys
+ * Pauses the mutation observer to prevent infinite loops
+ */
+export function refreshHighlighting(): ContentNode[] {
+  try {
+    // Pause observer to prevent our DOM changes from triggering it
+    pauseObserver();
+
+    const { structuredContent } = findAndProcessNodes();
+
+    if (structuredContent.length > 0) {
+      applyHighlighting(structuredContent);
+      console.log('[Live editor] Refreshed highlighting without sending nodes');
+    }
+
+    // Resume observer after a short delay to let DOM settle
+    setTimeout(() => {
+      resumeObserver();
+    }, 100);
+
+    return structuredContent;
+  } catch (error) {
+    console.error('Error during highlighting refresh:', error);
+    // Make sure to resume observer even on error
+    resumeObserver();
+    return [];
+  }
+}
+
+/**
+ * Pauses the mutation observer
+ */
+function pauseObserver() {
+  if (observerInstance && isObserving) {
+    observerInstance.disconnect();
+    isObserving = false;
+    console.log('[Live editor] Observer paused');
+  }
+}
+
+/**
+ * Resumes the mutation observer
+ */
+function resumeObserver() {
+  if (observerInstance && !isObserving) {
+    observerInstance.observe(document.body, mutationObserverConfig);
+    isObserving = true;
+    console.log('[Live editor] Observer resumed');
+  }
+}
+
+/**
+ * Sets the observer instance for pause/resume control
+ * Called from index.ts after creating the observer
+ */
+export function setObserverInstance(observer: MutationObserver) {
+  observerInstance = observer;
+  isObserving = true;
+}
+
 const mutationObserverCallbackOriginal: MutationCallback = (
   mutationsList,
   observer
@@ -304,21 +432,38 @@ const mutationObserverCallbackOriginal: MutationCallback = (
   let significantMutationDetected = false;
 
   const ACTUAL_OBSERVED_TARGET_NODE: Node = document.body;
-  const IGNORED_ELEMENT_IDS: string[] = ['contentstorage-element-label'];
+  const IGNORED_ELEMENT_IDS: string[] = [
+    'contentstorage-element-label',
+    'contentstorage-element-button',
+    'contentstorage-element-image-wrapper',
+    'contentstorage-element-input-wrapper'
+  ];
   const STYLE_RELATED_ATTRIBUTES: string[] = ['style', 'class'];
 
   const isInternalWrappingBatch = mutationsList.some(
     (mutation) =>
       mutation.type === 'childList' &&
-      Array.from(mutation.addedNodes).some(isInternalWrapper) // Use the helper function here
+      Array.from(mutation.addedNodes).some(isInternalWrapper)
   );
 
   for (const mutation of mutationsList) {
     if (mutation.type === 'childList') {
       const isWrapperAddition = Array.from(mutation.addedNodes).some(
         isInternalWrapper
-      ); // And here
+      );
       if (isWrapperAddition) {
+        continue;
+      }
+
+      // Also check if added nodes are our UI elements by ID
+      const isUIElementAddition = Array.from(mutation.addedNodes).some((node) => {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const elem = node as HTMLElement;
+          return elem.id && IGNORED_ELEMENT_IDS.includes(elem.id);
+        }
+        return false;
+      });
+      if (isUIElementAddition) {
         continue;
       }
     }
@@ -337,9 +482,20 @@ const mutationObserverCallbackOriginal: MutationCallback = (
     }
 
     if (mutation.type === 'attributes') {
+      // Skip our own attribute changes
+      if (mutation.attributeName?.startsWith('data-content')) {
+        continue;
+      }
+      if (mutation.attributeName === 'data-contentstorage-styled') {
+        continue;
+      }
+      if (mutation.attributeName === 'data-tracked-content-value') {
+        continue;
+      }
       if (STYLE_RELATED_ATTRIBUTES.includes(mutation.attributeName || '')) {
         const targetElement = mutation.target as HTMLElement;
-        if (!targetElement.hasAttribute('data-content-key')) {
+        if (targetElement.hasAttribute('data-content-key') ||
+            targetElement.hasAttribute('data-contentstorage-styled')) {
           continue;
         }
       }
@@ -352,22 +508,19 @@ const mutationObserverCallbackOriginal: MutationCallback = (
           ? (nodeToCheckIdPath as HTMLElement)
           : nodeToCheckIdPath.parentElement;
 
+      let isIgnoredPath = false;
       while (currentElement) {
         if (
           currentElement.id &&
           IGNORED_ELEMENT_IDS.includes(currentElement.id)
         ) {
-          // By using 'continue' with a label, we could break out to the next mutation,
-          // but for clarity, we'll just set a flag and break.
-          // This part of the logic can be simplified, but for now, we ensure it works.
-          // We mark this path to be skipped.
-          significantMutationDetected = false; // Override any previous detection
+          isIgnoredPath = true;
           break;
         }
         currentElement = currentElement.parentElement;
       }
-      // If the while loop broke because it found an ignored ID, continue to the next mutation.
-      if (currentElement && IGNORED_ELEMENT_IDS.includes(currentElement.id)) {
+
+      if (isIgnoredPath) {
         continue;
       }
     }
@@ -378,6 +531,7 @@ const mutationObserverCallbackOriginal: MutationCallback = (
 
   if (significantMutationDetected) {
     observer.disconnect();
+    isObserving = false;
 
     processDomChanges();
 
@@ -385,6 +539,7 @@ const mutationObserverCallbackOriginal: MutationCallback = (
     Promise.resolve()
       .then(() => {
         observer.observe(ACTUAL_OBSERVED_TARGET_NODE, mutationObserverConfig);
+        isObserving = true;
       })
       .catch((promiseError) => {
         console.error('Error re-observing target node:', promiseError);

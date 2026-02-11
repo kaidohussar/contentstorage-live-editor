@@ -48,6 +48,11 @@ const removeProtectedStyles = (
   properties.forEach(prop => element.style.removeProperty(prop));
 };
 
+function hasAbsoluteOrFixedPosition(element: HTMLElement): boolean {
+  const computedPosition = window.getComputedStyle(element).position;
+  return computedPosition === 'absolute' || computedPosition === 'fixed';
+}
+
 const resetInheritedStyles = (element: HTMLElement) => {
   const resetStyles = {
     'font-family':
@@ -649,12 +654,14 @@ export const markContentStorageElements = (
           wrapper.setAttribute('data-contentstorage-styled', 'wrapper');
         } else {
           // For text nodes (parent elements), style them directly with protection
-          const spanHighlightStyles = {
+          const spanHighlightStyles: Record<string, string> = {
             outline: `1px solid ${highlightColor}`,
             'outline-offset': '4px',
             'border-radius': '2px',
-            position: 'relative',
           };
+          if (!hasAbsoluteOrFixedPosition(element)) {
+            spanHighlightStyles.position = 'relative';
+          }
           applyProtectedStyles(element, spanHighlightStyles);
           element.setAttribute('data-contentstorage-styled', 'text');
         }
@@ -737,12 +744,11 @@ export const hideContentstorageElementsHighlight = (contentKey?: string) => {
 
     if (styleType === 'text') {
       // Remove text highlight styles
-      removeProtectedStyles(element, [
-        'outline',
-        'outline-offset',
-        'border-radius',
-        'position'
-      ]);
+      const propsToRemove = ['outline', 'outline-offset', 'border-radius'];
+      if (!hasAbsoluteOrFixedPosition(element)) {
+        propsToRemove.push('position');
+      }
+      removeProtectedStyles(element, propsToRemove);
     } else if (styleType === 'wrapper') {
       // Remove wrapper styles
       removeProtectedStyles(element, [
@@ -845,12 +851,14 @@ export const showElementHighlight = (contentKey: string) => {
     const isInput = element.tagName === 'INPUT';
 
     // Apply highlight styles
-    const highlightStyles = {
+    const highlightStyles: Record<string, string> = {
       outline: '1px solid #1791FF',
       'outline-offset': isImg || isInput ? '0' : '4px',
       'border-radius': '2px',
-      position: 'relative',
     };
+    if (!hasAbsoluteOrFixedPosition(element)) {
+      highlightStyles.position = 'relative';
+    }
     applyProtectedStyles(element, highlightStyles);
     element.setAttribute('data-contentstorage-styled', 'text');
 

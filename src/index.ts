@@ -1,6 +1,7 @@
 import {
   COMMUNICATION_TIMEOUT_MS,
   INCOMING_MESSAGE_TYPES,
+  IncomingMessagePayloadMap,
   OUTGOING_MESSAGE_TYPES,
 } from './contants';
 import { setAndApplyInitialConfig, setConfig } from './helpers/config';
@@ -16,6 +17,8 @@ import {
   mutationObserverCallback,
   mutationObserverConfig,
   processDomChanges,
+  refreshHighlighting,
+  setObserverInstance,
 } from './helpers/mutationObserver';
 import { sendMessageToParent, setParentWindowRef } from './helpers/sendMessageToParent';
 import { PendingChangeSimple } from './types';
@@ -89,6 +92,7 @@ import { createCameraButton } from './helpers/screenshotMode';
 
       console.log('[Live editor] Started observing DOM for mutations');
       observer.observe(document.body, mutationObserverConfig);
+      setObserverInstance(observer);
 
       // Add camera button for taking screenshots
       createCameraButton();
@@ -156,10 +160,20 @@ import { createCameraButton } from './helpers/screenshotMode';
               setAndApplyInitialConfig(event.data.payload.data.config);
               console.log('[Live editor] Applied config:', event.data.payload);
 
-              processDomChanges();
+              // In standalone mode (browser script without SDK), skip auto-sending content nodes
+              // Wait for AI analysis to provide content keys via SET_CONTENT_KEYS message
+              if (window.isStandaloneMode) {
+                console.log(
+                  '[Live editor] Standalone mode detected - skipping auto content detection. Waiting for SET_CONTENT_KEYS from AI analysis.'
+                );
+              } else {
+                // SDK mode - auto-detect and send content nodes
+                processDomChanges();
+              }
 
               console.log('[Live editor] Started observing DOM for mutations');
               observer.observe(document.body, mutationObserverConfig);
+              setObserverInstance(observer);
 
               cleanupHandshakeResources();
               console.log(
@@ -237,7 +251,40 @@ import { createCameraButton } from './helpers/screenshotMode';
               if (
                 event.data.type === INCOMING_MESSAGE_TYPES.REQUEST_SCREENSHOT
               ) {
-                handleScreenshotRequest(event.data.payload?.quality);
+                handleScreenshotRequest(event.data.payload?.data?.quality, event.data.payload?.data?.maxWidth);
+              }
+
+              if (
+                event.data.type === INCOMING_MESSAGE_TYPES.SET_CONTENT_KEYS
+              ) {
+                const { matches } = event.data.payload
+                  .data as IncomingMessagePayloadMap[typeof INCOMING_MESSAGE_TYPES.SET_CONTENT_KEYS];
+
+                // Populate memoryMap with matched keys from parent
+                for (const match of matches) {
+                  if (match.contentKey) {
+                    const existing = window.memoryMap.get(match.text);
+                    if (existing) {
+                      existing.ids.add(match.contentKey);
+                    } else {
+                      window.memoryMap.set(match.text, {
+                        ids: new Set([match.contentKey]),
+                        type: 'text',
+                      });
+                    }
+                  }
+                }
+
+                // Refresh highlighting and get found nodes
+                const foundNodes = refreshHighlighting();
+
+                // Send found content nodes to parent so panel shows only visible keys
+                if (foundNodes.length > 0) {
+                  sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
+                    contentNodes: foundNodes,
+                    language: null,
+                  });
+                }
               }
 
               // Process other messages here
@@ -268,7 +315,10 @@ import { createCameraButton } from './helpers/screenshotMode';
       } else {
         sendMessageToParent(
           OUTGOING_MESSAGE_TYPES.HANDSHAKE_INITIATE,
-          `Hello from iframe script (editor param: ${liveEditorParamValue}). Initiating handshake.`
+          {
+            message: `Hello from iframe script (editor param: ${liveEditorParamValue}). Initiating handshake.`,
+            isStandalone: window.isStandaloneMode ?? false,
+          }
         );
 
         // Timeout for the initial handshake (not needed for reconnection mode)

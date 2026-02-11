@@ -1,5 +1,65 @@
 import { isElementVisible } from './isElementVisible';
 
+// IDs of our own UI elements that should be excluded from content detection
+const CONTENTSTORAGE_UI_ELEMENT_IDS = [
+  'contentstorage-element-label',
+  'contentstorage-element-button',
+  'contentstorage-element-image-wrapper',
+  'contentstorage-element-input-wrapper',
+];
+
+// Minimum text length to be considered meaningful content
+const MIN_TEXT_LENGTH = 2;
+
+/**
+ * Checks if text is likely dynamic/non-translatable content
+ * Examples: "65%", "$45,234", "2,845", "+12.5%", "3", "JD"
+ */
+const isDynamicContent = (text: string): boolean => {
+  const trimmed = text.trim();
+
+  // Pure numbers (with optional thousand separators)
+  if (/^[\d,.\s]+$/.test(trimmed)) {
+    return true;
+  }
+
+  // Currency values: $45,234, €100, £50.00
+  if (/^[$€£¥₹]\s*[\d,.\s]+$/.test(trimmed) || /^[\d,.\s]+\s*[$€£¥₹]$/.test(trimmed)) {
+    return true;
+  }
+
+  // Percentages: 65%, +12.5%, -2.1%
+  if (/^[+-]?[\d,.\s]+%$/.test(trimmed)) {
+    return true;
+  }
+
+  // Time ago patterns: "2 minutes ago", "1 hour ago"
+  if (/^\d+\s+(second|minute|hour|day|week|month|year)s?\s+ago$/i.test(trimmed)) {
+    return true;
+  }
+
+  // Initials/abbreviations: "JD", "SJ", "AC" (2-3 uppercase letters)
+  if (/^[A-Z]{2,3}$/.test(trimmed)) {
+    return true;
+  }
+
+  return false;
+};
+
+/**
+ * Checks if element or any ancestor is one of our UI elements
+ */
+const isContentStorageUIElement = (element: HTMLElement | null): boolean => {
+  let current = element;
+  while (current && current !== document.body) {
+    if (current.id && CONTENTSTORAGE_UI_ELEMENT_IDS.includes(current.id)) {
+      return true;
+    }
+    current = current.parentElement;
+  }
+  return false;
+};
+
 const isEditableOrInsideEditable = (element: HTMLElement | null): boolean => {
   if (!element) {
     return false;
@@ -42,6 +102,11 @@ export const findContentNodesInPage = (): Node[] => {
           if (isImg || isInputWithPlaceholder) {
             // We apply a set of checks similar to what's done for text node parents.
 
+            // Skip our own UI elements (labels, buttons, wrappers)
+            if (isContentStorageUIElement(element)) {
+              return NodeFilter.FILTER_REJECT;
+            }
+
             // Check the element and its ancestors for 'data-content-checked'
             let currentAncestor: HTMLElement | null = element;
             while (currentAncestor && currentAncestor !== document.body) {
@@ -72,12 +137,28 @@ export const findContentNodesInPage = (): Node[] => {
         }
 
         if (node.nodeType === Node.TEXT_NODE) {
-          if (!node.textContent?.trim()) {
+          const textContent = node.textContent?.trim();
+          if (!textContent) {
             return NodeFilter.FILTER_SKIP;
+          }
+
+          // Skip text that's too short to be meaningful
+          if (textContent.length < MIN_TEXT_LENGTH) {
+            return NodeFilter.FILTER_REJECT;
+          }
+
+          // Skip dynamic/non-translatable content (numbers, percentages, currency, etc.)
+          if (isDynamicContent(textContent)) {
+            return NodeFilter.FILTER_REJECT;
           }
 
           const parent = node.parentElement;
           if (!parent) {
+            return NodeFilter.FILTER_REJECT;
+          }
+
+          // Skip our own UI elements (labels, buttons, wrappers)
+          if (isContentStorageUIElement(parent)) {
             return NodeFilter.FILTER_REJECT;
           }
 

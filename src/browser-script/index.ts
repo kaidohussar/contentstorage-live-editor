@@ -1,23 +1,20 @@
-import { LIVE_EDITOR_PARAM } from './constants';
 import { initializeMemoryMap } from './memoryMap';
 import { initializeMessageHandler } from './messageHandler';
+import { loadLiveEditor } from './loader';
 import { createAPI } from './api';
 
 /**
  * Detect if running in live editor mode
- * Requirements: inside iframe + URL param present
+ * Checks for iframe or PiP mode (URL param check is done by loader snippet)
  */
 function detectLiveEditorMode(): boolean {
   // Check if in iframe
   const isInIframe = window.parent && window.parent !== window;
 
-  if (!isInIframe) {
-    return false;
-  }
+  // Check if in PiP mode (opened via window.open)
+  const isInPipMode = window.opener && window.opener !== window;
 
-  // Check URL parameter (on the page URL, not script URL)
-  const urlParams = new URLSearchParams(window.location.search);
-  return urlParams.get(LIVE_EDITOR_PARAM) === 'true';
+  return isInIframe || isInPipMode;
 }
 
 /**
@@ -33,6 +30,9 @@ function detectLiveEditorMode(): boolean {
 
   console.log('[ContentStorage] Browser script initializing...');
 
+  // Mark standalone mode - browser script is loaded without SDK translations
+  window.isStandaloneMode = true;
+
   // Initialize memoryMap
   initializeMemoryMap();
 
@@ -44,8 +44,14 @@ function detectLiveEditorMode(): boolean {
   // Expose public API
   window.__contentstorageAPI = createAPI();
 
-  // Initialize message handler
+  // Initialize message handler (for SDK mode communication)
   initializeMessageHandler(isLiveEditorMode);
+
+  // In standalone mode, load live-editor immediately (don't wait for translations)
+  // The live-editor handles handshake with Contentstorage parent app
+  loadLiveEditor().catch((error) => {
+    console.error('[ContentStorage] Failed to load live editor:', error);
+  });
 
   console.log('[ContentStorage] Browser script ready');
 })();

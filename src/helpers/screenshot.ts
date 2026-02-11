@@ -7,14 +7,21 @@ import { isScreenshotModeEnabled } from './urlParams';
 /**
  * Get screenshot options configured for snapdom
  * @param quality - Quality of the screenshot (0-1), defaults to 0.95
+ * @param maxWidth - Optional max width to cap the screenshot resolution
  */
-const getScreenshotOptions = (quality = 0.95) => ({
-  type: 'png' as const,
-  quality,
-  dpr: window.devicePixelRatio,
-  backgroundColor: '#ffffff',
-  fast: true,
-});
+const getScreenshotOptions = (quality = 0.95, maxWidth?: number) => {
+  const viewportWidth = document.documentElement.clientWidth;
+  const needsResize = maxWidth && viewportWidth > maxWidth;
+
+  return {
+    type: (needsResize ? 'jpeg' : 'png') as 'jpeg' | 'png',
+    quality,
+    dpr: needsResize ? 1 : window.devicePixelRatio,
+    ...(needsResize ? { width: maxWidth } : {}),
+    backgroundColor: '#ffffff',
+    fast: true,
+  };
+};
 
 /**
  * Temporarily hides edit buttons (NOT labels) from the page
@@ -90,9 +97,9 @@ const refreshContent = async (): Promise<void> => {
   }
 };
 
-export const handleScreenshotRequest = async (quality?: number): Promise<void> => {
+export const handleScreenshotRequest = async (quality?: number, maxWidth?: number): Promise<void> => {
   console.log('[Live editor] Screenshot request received from Contentstorage');
-  console.log(`[Live editor] Screenshot quality set to ${quality ?? 0.95}`);
+  console.log(`[Live editor] Screenshot quality set to ${quality ?? 0.95}, maxWidth: ${maxWidth ?? 'none'}`);
 
   // Store references for cleanup
   let hiddenButtons: HTMLElement[] = [];
@@ -107,7 +114,7 @@ export const handleScreenshotRequest = async (quality?: number): Promise<void> =
 
     // Step 2: Capture screenshot with snapdom (returns blob directly)
     console.log('[Live editor] Capturing viewport with snapdom...');
-    const options = getScreenshotOptions(quality);
+    const options = getScreenshotOptions(quality, maxWidth);
 
     const blob = await snapdom.toBlob(document.body, options);
 
