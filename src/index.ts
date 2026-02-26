@@ -19,6 +19,7 @@ import {
   processDomChanges,
   refreshHighlighting,
   setObserverInstance,
+  pauseObserver,
 } from './helpers/mutationObserver';
 import { sendMessageToParent, setParentWindowRef } from './helpers/sendMessageToParent';
 import { PendingChangeSimple } from './types';
@@ -26,6 +27,7 @@ import { clearPendingChanges, setPendingChanges } from './helpers/misc';
 import { handleScreenshotRequest } from './helpers/screenshot';
 import { isScreenshotModeEnabled, isPipMode, isPipModeReconnection } from './helpers/urlParams';
 import { createCameraButton } from './helpers/screenshotMode';
+import { initAgentAPI } from './agent-api';
 
 (function () {
   const currentScript = document.currentScript as HTMLScriptElement;
@@ -65,6 +67,16 @@ import { createCameraButton } from './helpers/screenshotMode';
   // Detect if we need reconnection: pip_mode flag is set but window.opener is gone (after refresh/OAuth)
   const needsReconnection = isPipMode() && (!window.opener || window.opener === window);
   const isStandaloneScreenshotMode = !isInIframe && !isInPipMode && !needsReconnection && isScreenshotModeEnabled();
+
+  // Agent mode: Playwright/Puppeteer injects script for translation agent
+  const isAgentMode = (() => {
+    try {
+      const url = new URL(scriptSrc);
+      return url.searchParams.get('agent-mode') === 'true';
+    } catch {
+      return false;
+    }
+  })();
 
   if (isInIframe || isInPipMode || needsReconnection || isStandaloneScreenshotMode) {
     const isReconnection = isPipModeReconnection() || needsReconnection;
@@ -161,11 +173,21 @@ import { createCameraButton } from './helpers/screenshotMode';
               console.log('[Live editor] Applied config:', event.data.payload);
 
               // In standalone mode (browser script without SDK), skip auto-sending content nodes
-              // Wait for AI analysis to provide content keys via SET_CONTENT_KEYS message
+              // Wait for translations or AI analysis to provide content keys via SET_CONTENT_KEYS message
               if (window.isStandaloneMode) {
                 console.log(
-                  '[Live editor] Standalone mode detected - skipping auto content detection. Waiting for SET_CONTENT_KEYS from AI analysis.'
+                  '[Live editor] Standalone mode detected - skipping auto content detection. Waiting for translations or SET_CONTENT_KEYS.'
                 );
+
+                // Register refresh callback so browser-script can trigger re-scan
+                // after receiving translations via postMessage
+                window.__contentstorageRefresh = () => {
+                  const foundNodes = refreshHighlighting();
+                  sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
+                    contentNodes: foundNodes,
+                    language: window.currentLanguageCode || null,
+                  });
+                };
               } else {
                 // SDK mode - auto-detect and send content nodes
                 processDomChanges();
@@ -279,12 +301,10 @@ import { createCameraButton } from './helpers/screenshotMode';
                 const foundNodes = refreshHighlighting();
 
                 // Send found content nodes to parent so panel shows only visible keys
-                if (foundNodes.length > 0) {
-                  sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
-                    contentNodes: foundNodes,
-                    language: null,
-                  });
-                }
+                sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
+                  contentNodes: foundNodes,
+                  language: null,
+                });
               }
 
               // Process other messages here
@@ -332,6 +352,34 @@ import { createCameraButton } from './helpers/screenshotMode';
         }, COMMUNICATION_TIMEOUT_MS);
       }
     }
+  } else if (isAgentMode) {
+    console.log('[Live editor] Running in agent mode.');
+
+    // Initialize memoryMap if not present
+    if (!window.memoryMap) {
+      window.memoryMap = new Map();
+    }
+    if (typeof window.currentLanguageCode === 'undefined') {
+      window.currentLanguageCode = null;
+    }
+
+    // Highlighting OFF by default — agent controls via enableHighlighting()/disableHighlighting()
+    setAndApplyInitialConfig({
+      highlightEditableContent: false,
+      showPendingChanges: false,
+      showEditButton: false,
+    });
+
+    // Set up MutationObserver but immediately pause — agent controls via API
+    const observer = new MutationObserver(mutationObserverCallback);
+    observer.observe(document.body, mutationObserverConfig);
+    setObserverInstance(observer);
+    pauseObserver();
+
+    // Expose agent API
+    initAgentAPI();
+
+    console.log('[Live editor] Agent mode ready. API available at window.__contentstorageAgentAPI');
   } else {
     console.log(
       '[Live editor] Not running inside an iframe or PiP mode, or opener/parent is not accessible. Skipping parent communication setup.'

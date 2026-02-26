@@ -3,6 +3,7 @@ import { markContentStorageElements } from './markContentStorageElements';
 export type LiveEditorConfig = {
   highlightEditableContent?: boolean;
   showPendingChanges?: boolean;
+  showEditButton?: boolean;
 };
 
 let config: LiveEditorConfig = {

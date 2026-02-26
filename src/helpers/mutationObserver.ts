@@ -10,6 +10,7 @@ import { getPendingChanges, throttle } from './misc';
 import { renderTemplate } from './variableMatching';
 import { normalizeWhitespace, stripHtmlTags } from './htmlUtils';
 import { detectPageLanguage } from './detectLanguage';
+import { sortKeysByPageContext } from './memoryMapUtils';
 
 // Module-level observer reference for pause/resume control
 let observerInstance: MutationObserver | null = null;
@@ -31,7 +32,7 @@ function isInternalWrapper(node: Node): boolean {
  * Gets clean text content from an element, excluding our UI elements (labels, buttons, wrappers)
  * This prevents contamination of text content by our own UI additions
  */
-function getCleanTextContent(element: HTMLElement | null): string {
+export function getCleanTextContent(element: HTMLElement | null): string {
   if (!element) return '';
 
   const IGNORED_IDS = [
@@ -69,7 +70,7 @@ function getCleanTextContent(element: HTMLElement | null): string {
  * Generates a unique CSS selector path for an element
  * Returns a path like: "div#sidebar > nav > ul > li:nth-of-type(2) > a"
  */
-function getElementPath(element: Element | null): string {
+export function getElementPath(element: Element | null): string {
   if (!element) return '';
 
   const parts: string[] = [];
@@ -108,7 +109,7 @@ function getElementPath(element: Element | null): string {
  * Finds and processes content nodes from the DOM
  * Returns structured content ready for sending to parent or highlighting
  */
-function findAndProcessNodes(): { structuredContent: ContentNode[], detectedLanguage: string | null } {
+export function findAndProcessNodes(): { structuredContent: ContentNode[], detectedLanguage: string | null } {
   const nodes = findContentNodesInPage();
 
   // Track processed parent elements to avoid duplicates when text nodes are fragmented by HTML tags
@@ -190,18 +191,18 @@ function findAndProcessNodes(): { structuredContent: ContentNode[], detectedLang
           return null;
         }
 
-        // Find the first unclaimed ID, or fall back to first ID if all are claimed
-        const availableKey = keys.length > 0
-          ? (keys.find(k => !assignedIds.has(k)) || keys[0])
-          : null;
-        if (availableKey) {
-          assignedIds.add(availableKey);
+        // Include all available keys (sorted by prefix frequency in second pass)
+        const availableKeys = keys.filter(k => !assignedIds.has(k));
+        const contentKeyArr = availableKeys.length > 0 ? availableKeys : (keys.length > 0 ? [keys[0]] : []);
+        // Only add to assignedIds for single-key matches; multi-key deferred to second pass
+        if (contentKeyArr.length === 1 && contentKeyArr[0]) {
+          assignedIds.add(contentKeyArr[0]);
         }
 
         const data: ContentNode = {
           type: 'text',
           text: stripHtmlTags(matchedTemplateText),
-          contentKey: availableKey ? [availableKey] : [],
+          contentKey: contentKeyArr,
           elementPath: getElementPath(node.parentElement),
         };
 
@@ -224,19 +225,17 @@ function findAndProcessNodes(): { structuredContent: ContentNode[], detectedLang
             return null;
           }
 
-          // Find the first unclaimed ID, or fall back to first ID if all are claimed
-          const availableKey = keys.length > 0
-            ? (keys.find(k => !assignedIds.has(k)) || keys[0])
-            : null;
-          if (availableKey) {
-            assignedIds.add(availableKey);
+          const availableKeys = keys.filter(k => !assignedIds.has(k));
+          const contentKeyArr = availableKeys.length > 0 ? availableKeys : (keys.length > 0 ? [keys[0]] : []);
+          if (contentKeyArr.length === 1 && contentKeyArr[0]) {
+            assignedIds.add(contentKeyArr[0]);
           }
 
           return {
             type: 'image',
             url: imgElement.src,
             altText: imgElement.alt,
-            contentKey: availableKey ? [availableKey] : [],
+            contentKey: contentKeyArr,
           };
         }
 
@@ -277,18 +276,16 @@ function findAndProcessNodes(): { structuredContent: ContentNode[], detectedLang
             return null;
           }
 
-          // Find the first unclaimed ID, or fall back to first ID if all are claimed
-          const availableKey = keys.length > 0
-            ? (keys.find(k => !assignedIds.has(k)) || keys[0])
-            : null;
-          if (availableKey) {
-            assignedIds.add(availableKey);
+          const availableKeys = keys.filter(k => !assignedIds.has(k));
+          const contentKeyArr = availableKeys.length > 0 ? availableKeys : (keys.length > 0 ? [keys[0]] : []);
+          if (contentKeyArr.length === 1 && contentKeyArr[0]) {
+            assignedIds.add(contentKeyArr[0]);
           }
 
           const data: ContentNode = {
             type: 'text',
             text: stripHtmlTags(matchedTemplateText),
-            contentKey: availableKey ? [availableKey] : [],
+            contentKey: contentKeyArr,
             elementPath: getElementPath(inputElement),
           };
 
@@ -300,6 +297,14 @@ function findAndProcessNodes(): { structuredContent: ContentNode[], detectedLang
       return null;
     })
     .filter(Boolean) as ContentNode[];
+
+  // Second pass: sort multi-key content nodes by prefix frequency among assigned keys
+  for (const node of structuredContent) {
+    if (node.contentKey.length > 1) {
+      node.contentKey = sortKeysByPageContext(node.contentKey, assignedIds);
+      assignedIds.add(node.contentKey[0]);
+    }
+  }
 
   // Detect language for standalone mode - helps parent match texts to correct language content
   const detectedLanguage = window.isStandaloneMode ? detectPageLanguage() : null;
@@ -332,11 +337,19 @@ function applyHighlighting(structuredContent: ContentNode[]) {
  * SET_CONTENT_KEYS message provides content keys from AI analysis.
  */
 export function processDomChanges() {
-  // In standalone mode, still apply highlighting but don't send content nodes
-  // This allows existing memoryMap entries to highlight content after page navigation
+  // In standalone mode, apply highlighting. If memoryMap has entries (from SET_CONTENT_KEYS),
+  // also send FOUND_CONTENT_NODES so the parent knows which keys are visible on the page.
   if (window.isStandaloneMode) {
-    console.log('[Live editor] Standalone mode - applying highlighting without sending nodes');
-    refreshHighlighting();
+    if (window.memoryMap.size > 0) {
+      const foundNodes = refreshHighlighting();
+      sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
+        contentNodes: foundNodes,
+        language: null,
+      });
+    }
+    // When memoryMap is empty, skip highlighting entirely.
+    // This prevents marking all text nodes with data-content-key="undefined"
+    // which blocks correct key assignment when SET_CONTENT_KEYS arrives later.
     return;
   }
 
@@ -397,7 +410,7 @@ export function refreshHighlighting(): ContentNode[] {
 /**
  * Pauses the mutation observer
  */
-function pauseObserver() {
+export function pauseObserver() {
   if (observerInstance && isObserving) {
     observerInstance.disconnect();
     isObserving = false;
@@ -408,7 +421,7 @@ function pauseObserver() {
 /**
  * Resumes the mutation observer
  */
-function resumeObserver() {
+export function resumeObserver() {
   if (observerInstance && !isObserving) {
     observerInstance.observe(document.body, mutationObserverConfig);
     isObserving = true;

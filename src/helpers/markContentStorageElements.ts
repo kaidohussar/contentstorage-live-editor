@@ -4,6 +4,7 @@ import { PendingChangeSimple } from '../types';
 import { isImageElement } from './typeguards';
 import { renderTemplate } from './variableMatching';
 import { normalizeWhitespace, stripHtmlTags } from './htmlUtils';
+import { getConfig } from './config';
 
 let isProcessing = false;
 
@@ -318,7 +319,7 @@ const findAndMarkElements = (
       matchedItem = content.find((item) => {
         if (item.type === 'text' && parentText) {
           // Skip if this content key was already matched to another element
-          const itemContentKey = item.contentKey[item.contentKey.length - 1];
+          const itemContentKey = item.contentKey[0];
           if (matchedContentKeys.has(itemContentKey)) {
             return false;
           }
@@ -346,7 +347,7 @@ const findAndMarkElements = (
 
     if (matchedItem) {
       const contentKey =
-        matchedItem.contentKey[matchedItem.contentKey.length - 1];
+        matchedItem.contentKey[0];
 
       // Check if we should skip wrapping this text node to prevent duplicates
       if (!shouldSkipTextNodeWrapping(element, contentKey)) {
@@ -357,6 +358,11 @@ const findAndMarkElements = (
         // Use originalTemplate (with HTML) if available, otherwise fall back to matchedItem.text
         const templateText = matchedItem.type === 'image' ? undefined : (originalTemplate || matchedItem.text);
         trackContentElement(element, contentKey, templateText);
+
+        // Mark element as ambiguous if multiple content keys match
+        if (matchedItem.contentKey.length > 1) {
+          element.parentElement?.setAttribute('data-content-ambiguous', 'true');
+        }
       }
     } else {
       // If no match is found, mark it as checked
@@ -383,7 +389,7 @@ const findAndMarkElements = (
       matchedItem = content.find((item) => {
         if (item.type === 'image' && item.url === imgElement.src) {
           // Skip if this content key was already matched to another element
-          const itemContentKey = item.contentKey[item.contentKey.length - 1];
+          const itemContentKey = item.contentKey[0];
           if (matchedContentKeys.has(itemContentKey)) {
             return false;
           }
@@ -401,7 +407,7 @@ const findAndMarkElements = (
         matchedItem = content.find((item) => {
           if (item.type === 'text') {
             // Skip if this content key was already matched to another element
-            const itemContentKey = item.contentKey[item.contentKey.length - 1];
+            const itemContentKey = item.contentKey[0];
             if (matchedContentKeys.has(itemContentKey)) {
               return false;
             }
@@ -424,11 +430,16 @@ const findAndMarkElements = (
 
     if (matchedItem) {
       // Mark this content key as matched to prevent reuse for other elements
-      const contentKey = matchedItem.contentKey[matchedItem.contentKey.length - 1];
+      const contentKey = matchedItem.contentKey[0];
       matchedContentKeys.add(contentKey);
 
       // If a match is found, track the element.
       trackContentElement(element, contentKey);
+
+      // Mark element as ambiguous if multiple content keys match
+      if (matchedItem.contentKey.length > 1) {
+        htmlElement.setAttribute('data-content-ambiguous', 'true');
+      }
     } else {
       // If no match is found, mark as checked.
       trackContentElement(element, 'checked');
@@ -534,7 +545,8 @@ export const markContentStorageElements = (
         return;
       }
 
-      const highlightColor = '#1791FF';
+      const isAmbiguous = elements.some(el => el.getAttribute('data-content-ambiguous') === 'true');
+      const highlightColor = isAmbiguous ? '#FF9800' : '#1791FF';
 
       elements.forEach((element) => {
         const isImg = isImageElement(element);
@@ -709,10 +721,12 @@ export const markContentStorageElements = (
 
         applyProtectedStyles(label, labelStyles);
 
-        const button = editButton(contentStorageId);
-
         parentForControls.appendChild(label);
-        parentForControls.appendChild(button);
+
+        if (getConfig().showEditButton !== false) {
+          const button = editButton(contentStorageId);
+          parentForControls.appendChild(button);
+        }
       });
     });
   } finally {
@@ -815,10 +829,11 @@ export const hideContentstorageElementsHighlight = (contentKey?: string) => {
       }
     });
 
-    // Remove data-content-key attributes only when clearing all
+    // Remove data-content-key and data-content-ambiguous attributes only when clearing all
     const elements = document.querySelectorAll<HTMLElement>('[data-content-key]');
     elements.forEach((element) => {
       element.removeAttribute('data-content-key');
+      element.removeAttribute('data-content-ambiguous');
     });
   }
 };
@@ -849,10 +864,12 @@ export const showElementHighlight = (contentKey: string) => {
   elements.forEach((element) => {
     const isImg = element.tagName === 'IMG';
     const isInput = element.tagName === 'INPUT';
+    const isAmbiguous = element.getAttribute('data-content-ambiguous') === 'true';
+    const highlightColor = isAmbiguous ? '#FF9800' : '#1791FF';
 
     // Apply highlight styles
     const highlightStyles: Record<string, string> = {
-      outline: '1px solid #1791FF',
+      outline: `1px solid ${highlightColor}`,
       'outline-offset': isImg || isInput ? '0' : '4px',
       'border-radius': '2px',
     };
@@ -876,7 +893,7 @@ export const showElementHighlight = (contentKey: string) => {
     const labelStyles: Record<string, string> = {
       position: 'absolute',
       left: 'calc(100% + 10px)',
-      color: '#1791FF',
+      color: highlightColor,
       'font-size': '10px',
       'font-weight': '400',
       'font-family':
@@ -895,11 +912,12 @@ export const showElementHighlight = (contentKey: string) => {
     };
     applyProtectedStyles(label, labelStyles);
 
-    // Add button
-    const button = editButton(contentKey);
-
     element.appendChild(label);
-    element.appendChild(button);
+
+    if (getConfig().showEditButton !== false) {
+      const button = editButton(contentKey);
+      element.appendChild(button);
+    }
   });
 };
 

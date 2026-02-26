@@ -23,6 +23,7 @@ declare global {
       clear: () => void;
       onRefresh: (callback: () => void) => void;
     };
+    __contentstorageAgentAPI?: import('./agent-api').AgentAPI;
   }
 }
 
