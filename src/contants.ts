@@ -19,6 +19,7 @@ export const INCOMING_MESSAGE_TYPES = {
   REQUEST_SCREENSHOT: 'contentstorage-request-screenshot',
   RECONNECT_PING: 'contentstorage-reconnect-ping',
   SET_CONTENT_KEYS: 'contentstorage-set-content-keys',
+  SET_TRANSLATIONS: 'contentstorage-set-translations',
 } as const;
 
 export const OUTGOING_MESSAGE_TYPES = {
@@ -61,6 +62,7 @@ export type IncomingMessagePayloadMap = {
   [INCOMING_MESSAGE_TYPES.HIDE_ELEMENT_HIGHLIGHT]: { contentKey: string };
   [INCOMING_MESSAGE_TYPES.SHOW_ELEMENT_HIGHLIGHT]: { contentKey: string };
   [INCOMING_MESSAGE_TYPES.SET_CONTENT_KEYS]: { matches: TextMatch[] };
+  [INCOMING_MESSAGE_TYPES.SET_TRANSLATIONS]: { languageCode: string; translations: Record<string, string> };
 };
 
 export const COMMUNICATION_TIMEOUT_MS = 5000; // 5 seconds

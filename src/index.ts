@@ -28,6 +28,7 @@ import { handleScreenshotRequest } from './helpers/screenshot';
 import { isScreenshotModeEnabled, isPipMode, isPipModeReconnection } from './helpers/urlParams';
 import { createCameraButton } from './helpers/screenshotMode';
 import { initAgentAPI } from './agent-api';
+import { populateFromFlatTranslations } from './helpers/memoryMapUtils';
 
 (function () {
   const currentScript = document.currentScript as HTMLScriptElement;
@@ -304,6 +305,23 @@ import { initAgentAPI } from './agent-api';
                 sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
                   contentNodes: foundNodes,
                   language: null,
+                });
+              }
+
+              if (
+                event.data.type === INCOMING_MESSAGE_TYPES.SET_TRANSLATIONS
+              ) {
+                const { languageCode, translations } = event.data.payload
+                  .data as IncomingMessagePayloadMap[typeof INCOMING_MESSAGE_TYPES.SET_TRANSLATIONS];
+
+                window.currentLanguageCode = languageCode;
+                populateFromFlatTranslations(translations);
+
+                const foundNodes = refreshHighlighting();
+
+                sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
+                  contentNodes: foundNodes,
+                  language: languageCode,
                 });
               }
 
