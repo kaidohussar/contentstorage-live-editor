@@ -183,10 +183,11 @@ import { populateFromFlatTranslations } from './helpers/memoryMapUtils';
                 // Register refresh callback so browser-script can trigger re-scan
                 // after receiving translations via postMessage
                 window.__contentstorageRefresh = () => {
-                  const foundNodes = refreshHighlighting();
+                  const { contentNodes, unmatchedIds } = refreshHighlighting();
                   sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
-                    contentNodes: foundNodes,
+                    contentNodes,
                     language: window.currentLanguageCode || null,
+                    unmatchedIds,
                   });
                 };
               } else {
@@ -299,12 +300,13 @@ import { populateFromFlatTranslations } from './helpers/memoryMapUtils';
                 }
 
                 // Refresh highlighting and get found nodes
-                const foundNodes = refreshHighlighting();
+                const { contentNodes: foundNodes, unmatchedIds } = refreshHighlighting();
 
                 // Send found content nodes to parent so panel shows only visible keys
                 sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
                   contentNodes: foundNodes,
                   language: null,
+                  unmatchedIds,
                 });
               }
 
@@ -317,11 +319,12 @@ import { populateFromFlatTranslations } from './helpers/memoryMapUtils';
                 window.currentLanguageCode = languageCode;
                 populateFromFlatTranslations(translations);
 
-                const foundNodes = refreshHighlighting();
+                const { contentNodes: translationNodes, unmatchedIds: translationUnmatchedIds } = refreshHighlighting();
 
                 sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
-                  contentNodes: foundNodes,
+                  contentNodes: translationNodes,
                   language: languageCode,
+                  unmatchedIds: translationUnmatchedIds,
                 });
               }
 

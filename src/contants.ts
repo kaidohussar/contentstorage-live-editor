@@ -3,9 +3,20 @@ import { PendingChangeSimple, ScreenshotResponsePayload } from './types';
 export type OutgoingMessageType =
   (typeof OUTGOING_MESSAGE_TYPES)[keyof typeof OUTGOING_MESSAGE_TYPES];
 
-export type ContentNode =
-  | { type: 'text'; contentKey: string[]; text: string; elementPath: string }
-  | { type: 'image'; contentKey: string[]; url: string; altText: string };
+export type AssignmentReason = 'single_match' | 'sibling_context' | 'prefix_frequency' | 'ambiguous';
+
+export type ContentNodeElement = {
+  text: string;
+  elementPath: string;
+  reason: AssignmentReason;
+};
+
+export type ContentNode = {
+  type: 'text';
+  contentKey: string;
+  text: string;
+  elements: ContentNodeElement[];
+};
 
 export const INCOMING_MESSAGE_TYPES = {
   HANDSHAKE_ACKNOWLEDGE: 'parent-handshake-acknowledge',
@@ -42,6 +53,7 @@ export type MessagePayloadMap = {
   [OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES]: {
     contentNodes: ContentNode[];
     language?: string | null; // Detected page language (e.g., "EN", "DE")
+    unmatchedIds?: string[]; // IDs from memoryMap not matched to any DOM element
   };
   [OUTGOING_MESSAGE_TYPES.SCREENSHOT_RESPONSE]: ScreenshotResponsePayload;
   [OUTGOING_MESSAGE_TYPES.VISIBILITY_CHANGE]: {

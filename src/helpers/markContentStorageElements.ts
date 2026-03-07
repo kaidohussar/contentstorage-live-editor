@@ -1,10 +1,10 @@
 import { sendMessageToParent } from './sendMessageToParent';
 import { ContentNode, OUTGOING_MESSAGE_TYPES } from '../contants';
 import { PendingChangeSimple } from '../types';
-import { isImageElement } from './typeguards';
 import { renderTemplate } from './variableMatching';
 import { normalizeWhitespace, stripHtmlTags } from './htmlUtils';
 import { getConfig } from './config';
+import { getElementPath } from './elementPath';
 
 let isProcessing = false;
 
@@ -294,7 +294,8 @@ const findAndMarkElements = (
   element: Node,
   content: ContentNode[],
   templateLookup: Map<string, { template: string; variables?: Record<string, string | number | boolean> }>,
-  matchedContentKeys: Set<string>
+  matchedContentKeys: Set<string>,
+  elementPathToKey?: Map<string, string>
 ): void => {
   if (element.nodeType === Node.TEXT_NODE && element.textContent?.trim()) {
     // Check if the parent element already has a content key
@@ -308,19 +309,34 @@ const findAndMarkElements = (
     if (existingContentKey) {
       // If parent already has content key, find by content key to ensure consistency
       matchedItem = content.find((item) =>
-        item.contentKey.includes(existingContentKey)
+        item.contentKey === existingContentKey
       );
-    } else {
+    } else if (elementPathToKey && parentElement) {
+      // Check resolved elementPath lookup first for consistency with findAndProcessNodes
+      const resolvedKey = elementPathToKey.get(getElementPath(parentElement));
+      if (resolvedKey) {
+        matchedItem = content.find((item) =>
+          item.contentKey === resolvedKey
+        );
+        if (matchedItem) {
+          const templateData = templateLookup.get(matchedItem.text);
+          if (templateData) {
+            originalTemplate = templateData.template;
+          }
+        }
+      }
+    }
+
+    if (!matchedItem && !existingContentKey) {
       // Find if this text node's content matches any of the items to be highlighted.
       // Use exact matching with variable rendering
       // Use parent's textContent to get combined text (handles HTML tags that split text nodes)
       const parentText = element.parentElement?.textContent?.trim();
 
       matchedItem = content.find((item) => {
-        if (item.type === 'text' && parentText) {
+        if (parentText) {
           // Skip if this content key was already matched to another element
-          const itemContentKey = item.contentKey[0];
-          if (matchedContentKeys.has(itemContentKey)) {
+          if (matchedContentKeys.has(item.contentKey)) {
             return false;
           }
 
@@ -346,8 +362,7 @@ const findAndMarkElements = (
     }
 
     if (matchedItem) {
-      const contentKey =
-        matchedItem.contentKey[0];
+      const contentKey = matchedItem.contentKey;
 
       // Check if we should skip wrapping this text node to prevent duplicates
       if (!shouldSkipTextNodeWrapping(element, contentKey)) {
@@ -356,11 +371,12 @@ const findAndMarkElements = (
 
         // If a match is found and no ancestor/sibling already has this key, track it
         // Use originalTemplate (with HTML) if available, otherwise fall back to matchedItem.text
-        const templateText = matchedItem.type === 'image' ? undefined : (originalTemplate || matchedItem.text);
+        const templateText = originalTemplate || matchedItem.text;
         trackContentElement(element, contentKey, templateText);
 
-        // Mark element as ambiguous if multiple content keys match
-        if (matchedItem.contentKey.length > 1) {
+        // Mark element as ambiguous if any element has ambiguous reason
+        const isAmbiguous = matchedItem.elements.some(el => el.reason === 'ambiguous');
+        if (isAmbiguous) {
           element.parentElement?.setAttribute('data-content-ambiguous', 'true');
         }
       }
@@ -377,68 +393,46 @@ const findAndMarkElements = (
 
   if (
     element.nodeType === Node.ELEMENT_NODE &&
-    ((element as Element).tagName === 'IMG' ||
-      (element as Element).tagName === 'INPUT')
+    (element as Element).tagName === 'INPUT'
   ) {
-    const htmlElement = element as HTMLElement;
+    const inputElement = element as HTMLInputElement;
     let matchedItem: ContentNode | undefined;
 
-    if (htmlElement.tagName === 'IMG') {
-      const imgElement = htmlElement as HTMLImageElement;
-      // Find if this image node's src matches any of the items to be marked.
+    const contentValue =
+      inputElement.placeholder?.trim() ||
+      inputElement.getAttribute('aria-label')?.trim();
+    if (contentValue) {
       matchedItem = content.find((item) => {
-        if (item.type === 'image' && item.url === imgElement.src) {
-          // Skip if this content key was already matched to another element
-          const itemContentKey = item.contentKey[0];
-          if (matchedContentKeys.has(itemContentKey)) {
-            return false;
-          }
-          return true;
-        }
-        return false;
-      });
-    } else {
-      // It must be an INPUT
-      const inputElement = htmlElement as HTMLInputElement;
-      const contentValue =
-        inputElement.placeholder?.trim() ||
-        inputElement.getAttribute('aria-label')?.trim();
-      if (contentValue) {
-        matchedItem = content.find((item) => {
-          if (item.type === 'text') {
-            // Skip if this content key was already matched to another element
-            const itemContentKey = item.contentKey[0];
-            if (matchedContentKeys.has(itemContentKey)) {
-              return false;
-            }
-
-            // O(1) lookup using pre-built template map
-            const templateData = templateLookup.get(item.text);
-            if (templateData) {
-              return matchesExact(
-                contentValue,
-                templateData.template,
-                templateData.variables
-              );
-            }
-            return matchesExact(contentValue, item.text);
-          }
+        // Skip if this content key was already matched to another element
+        if (matchedContentKeys.has(item.contentKey)) {
           return false;
-        });
-      }
+        }
+
+        // O(1) lookup using pre-built template map
+        const templateData = templateLookup.get(item.text);
+        if (templateData) {
+          return matchesExact(
+            contentValue,
+            templateData.template,
+            templateData.variables
+          );
+        }
+        return matchesExact(contentValue, item.text);
+      });
     }
 
     if (matchedItem) {
       // Mark this content key as matched to prevent reuse for other elements
-      const contentKey = matchedItem.contentKey[0];
+      const contentKey = matchedItem.contentKey;
       matchedContentKeys.add(contentKey);
 
       // If a match is found, track the element.
       trackContentElement(element, contentKey);
 
-      // Mark element as ambiguous if multiple content keys match
-      if (matchedItem.contentKey.length > 1) {
-        htmlElement.setAttribute('data-content-ambiguous', 'true');
+      // Mark element as ambiguous if any element has ambiguous reason
+      const isAmbiguous = matchedItem.elements.some(el => el.reason === 'ambiguous');
+      if (isAmbiguous) {
+        inputElement.setAttribute('data-content-ambiguous', 'true');
       }
     } else {
       // If no match is found, mark as checked.
@@ -461,13 +455,14 @@ const findAndMarkElements = (
 
   const childNodes = Array.from(element.childNodes);
   for (const child of childNodes) {
-    findAndMarkElements(child, content, templateLookup, matchedContentKeys);
+    findAndMarkElements(child, content, templateLookup, matchedContentKeys, elementPathToKey);
   }
 };
 
 export const markContentStorageElements = (
   content: ContentNode[],
-  shouldHighlight: boolean
+  shouldHighlight: boolean,
+  elementPathToKey?: Map<string, string>
 ) => {
   if (isProcessing) return;
   isProcessing = true;
@@ -500,7 +495,7 @@ export const markContentStorageElements = (
 
     // First, find and wrap matching text in spans with data-content-key
     if (content && content?.length > 0) {
-      findAndMarkElements(document.body, content, templateLookup, matchedContentKeys);
+      findAndMarkElements(document.body, content, templateLookup, matchedContentKeys, elementPathToKey);
     }
 
     // Then position edit buttons for highlighted content
@@ -549,15 +544,12 @@ export const markContentStorageElements = (
       const highlightColor = isAmbiguous ? '#FF9800' : '#1791FF';
 
       elements.forEach((element) => {
-        const isImg = isImageElement(element);
         const isInput = element.tagName === 'INPUT';
         let contentValue: string | null | undefined;
         let wrapper: HTMLElement | null = null;
 
         // Determine the content value based on element type
-        if (isImg) {
-          contentValue = element.src;
-        } else if (isInput) {
+        if (isInput) {
           const inputElement = element as HTMLInputElement;
           contentValue =
             inputElement.placeholder || inputElement.getAttribute('aria-label');
@@ -590,7 +582,7 @@ export const markContentStorageElements = (
           let contentFound = window.memoryMap.has(contentValue);
 
           // If direct lookup fails and this is text content, try exact matching with renderTemplate
-          if (!contentFound && !isImg && !isInput) {
+          if (!contentFound && !isInput) {
             const normalizedContentValue = normalizeWhitespace(
               contentValue.trim()
             );
@@ -614,11 +606,9 @@ export const markContentStorageElements = (
           }
         }
 
-        // Create a wrapper for IMG and INPUT elements to help with positioning
-        if (isImg || isInput) {
-          const wrapperElemId = isImg
-            ? 'contentstorage-element-image-wrapper'
-            : 'contentstorage-element-input-wrapper';
+        // Create a wrapper for INPUT elements to help with positioning
+        if (isInput) {
+          const wrapperElemId = 'contentstorage-element-input-wrapper';
 
           const parentNode = element.parentNode as HTMLElement;
           // Check if the element is already wrapped
@@ -659,7 +649,7 @@ export const markContentStorageElements = (
           // Apply highlight outline with protection (use dynamic color)
           const highlightStyles = {
             outline: `1px solid ${highlightColor}`,
-            'border-radius': isImg ? '2px' : '4px',
+            'border-radius': '4px',
             'outline-offset': '0',
           };
           applyProtectedStyles(wrapper, highlightStyles);
@@ -713,7 +703,7 @@ export const markContentStorageElements = (
           height: 'auto',
         };
 
-        if (isInput || isImg) {
+        if (isInput) {
           labelStyles['bottom'] = '0px';
         } else {
           labelStyles['top'] = '4px';
@@ -789,15 +779,14 @@ export const hideContentstorageElementsHighlight = (contentKey?: string) => {
     // Note: Keep data-content-key for re-highlighting capability
   });
 
-  // Clean up wrapper elements (unwrap IMG/INPUT) - only for matching elements
+  // Clean up wrapper elements (unwrap INPUT) - only for matching elements
   if (contentKey) {
     // For specific key, find wrappers containing elements with that key
     targetElements.forEach((element) => {
       const parentNode = element.parentNode as HTMLElement;
       if (
         parentNode &&
-        (parentNode.id === 'contentstorage-element-image-wrapper' ||
-          parentNode.id === 'contentstorage-element-input-wrapper')
+        parentNode.id === 'contentstorage-element-input-wrapper'
       ) {
         const grandParent = parentNode.parentNode;
         if (grandParent) {
@@ -813,10 +802,10 @@ export const hideContentstorageElementsHighlight = (contentKey?: string) => {
   } else {
     // For all, use the original approach
     const wrappers = document.querySelectorAll<HTMLElement>(
-      '#contentstorage-element-image-wrapper, #contentstorage-element-input-wrapper'
+      '#contentstorage-element-input-wrapper'
     );
     wrappers.forEach((wrapper) => {
-      const elementToUnwrap = wrapper.querySelector('img, input');
+      const elementToUnwrap = wrapper.querySelector('input');
       const parent = wrapper.parentNode;
 
       if (parent && elementToUnwrap) {
@@ -862,7 +851,6 @@ export const showElementHighlight = (contentKey: string) => {
   );
 
   elements.forEach((element) => {
-    const isImg = element.tagName === 'IMG';
     const isInput = element.tagName === 'INPUT';
     const isAmbiguous = element.getAttribute('data-content-ambiguous') === 'true';
     const highlightColor = isAmbiguous ? '#FF9800' : '#1791FF';
@@ -870,7 +858,7 @@ export const showElementHighlight = (contentKey: string) => {
     // Apply highlight styles
     const highlightStyles: Record<string, string> = {
       outline: `1px solid ${highlightColor}`,
-      'outline-offset': isImg || isInput ? '0' : '4px',
+      'outline-offset': isInput ? '0' : '4px',
       'border-radius': '2px',
     };
     if (!hasAbsoluteOrFixedPosition(element)) {

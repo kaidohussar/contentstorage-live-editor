@@ -93,13 +93,12 @@ export const findContentNodesInPage = (): Node[] => {
         if (node.nodeType === Node.ELEMENT_NODE) {
           const element = node as HTMLElement;
 
-          const isImg = element.tagName === 'IMG';
           const isInputWithPlaceholder =
             element.tagName === 'INPUT' &&
             ((element as HTMLInputElement).placeholder?.trim() ||
               element.getAttribute('aria-label')?.trim());
 
-          if (isImg || isInputWithPlaceholder) {
+          if (isInputWithPlaceholder) {
             // We apply a set of checks similar to what's done for text node parents.
 
             // Skip our own UI elements (labels, buttons, wrappers)
