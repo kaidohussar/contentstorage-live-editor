@@ -34,6 +34,43 @@ export const hasVariables = (text: string): boolean => {
  *                { userName: "John Doe", count: 3 })
  * // Returns: "Welcome back, John Doe! You have 3 new notifications."
  */
+/**
+ * Matches a template with unresolved variables against DOM text
+ * by converting {{varName}} / {varName} placeholders into regex wildcards.
+ *
+ * Only used as fallback when exact matching fails and the template contains variables.
+ *
+ * @example
+ * matchesTemplateWithWildcards(
+ *   "Welcome back, <strong>{{userName}}</strong>!",
+ *   "Welcome back, John Doe!"
+ * ) // Returns: true
+ */
+export const matchesTemplateWithWildcards = (
+  templateText: string,
+  domText: string
+): boolean => {
+  const stripped = stripHtmlTags(templateText);
+
+  // Only applicable if template has variable placeholders
+  if (!hasVariables(stripped)) return false;
+
+  const normalized = normalizeWhitespace(stripped);
+
+  // Escape regex special chars, then replace escaped variable placeholders with wildcards
+  const pattern = normalized
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\\\{\\\{[^\\}]+\\\}\\\}/g, '.+?')
+    .replace(/\\\{[^\\}]+\\\}/g, '.+?');
+
+  try {
+    const regex = new RegExp(`^${pattern}$`);
+    return regex.test(normalizeWhitespace(domText.trim()));
+  } catch {
+    return false;
+  }
+};
+
 export const renderTemplate = (
   templateText: string,
   variables?: Record<string, string | number | boolean>

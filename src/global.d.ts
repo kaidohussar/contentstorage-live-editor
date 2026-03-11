@@ -24,6 +24,7 @@ declare global {
       onRefresh: (callback: () => void) => void;
     };
     __contentstorageAgentAPI?: import('./agent-api').AgentAPI;
+    __contentstorageExtensionMode?: boolean;
   }
 }
 

@@ -4,7 +4,7 @@ import {
   IncomingMessagePayloadMap,
   OUTGOING_MESSAGE_TYPES,
 } from './contants';
-import { setAndApplyInitialConfig, setConfig } from './helpers/config';
+import { setAndApplyInitialConfig, setConfig, getConfig } from './helpers/config';
 import {
   hideContentstorageElementsHighlight,
   hideElementHighlight,
@@ -21,46 +21,135 @@ import {
   setObserverInstance,
   pauseObserver,
 } from './helpers/mutationObserver';
-import { sendMessageToParent, setParentWindowRef } from './helpers/sendMessageToParent';
+import { sendMessageToParent, setParentWindowRef, setExtensionMode } from './helpers/sendMessageToParent';
 import { PendingChangeSimple } from './types';
-import { clearPendingChanges, setPendingChanges } from './helpers/misc';
+import { clearPendingChanges, getPendingChanges, setPendingChanges } from './helpers/misc';
 import { handleScreenshotRequest } from './helpers/screenshot';
 import { isScreenshotModeEnabled, isPipMode, isPipModeReconnection } from './helpers/urlParams';
 import { createCameraButton } from './helpers/screenshotMode';
 import { initAgentAPI } from './agent-api';
 import { populateFromFlatTranslations } from './helpers/memoryMapUtils';
 
+/** Shared message handler used by both extension mode and iframe/PiP mode. */
+function handleMessage(type: string, payload: unknown): void {
+  if (type === INCOMING_MESSAGE_TYPES.SET_TRANSLATIONS) {
+    const { languageCode, translations } = payload as IncomingMessagePayloadMap[typeof INCOMING_MESSAGE_TYPES.SET_TRANSLATIONS];
+    window.currentLanguageCode = languageCode;
+    populateFromFlatTranslations(translations);
+    const { contentNodes, unmatchedIds } = refreshHighlighting();
+    sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
+      contentNodes,
+      language: languageCode,
+      unmatchedIds,
+    });
+  }
+
+  if (type === INCOMING_MESSAGE_TYPES.SET_HIGHLIGHT_CONTENT) {
+    setConfig({ highlightEditableContent: true });
+    markContentStorageElements([], true);
+    // Re-apply pending changes highlighting for elements that had edits
+    if (getConfig().showPendingChanges) {
+      showPendingChanges(getPendingChanges());
+    }
+  }
+
+  if (type === INCOMING_MESSAGE_TYPES.SET_HIDE_HIGHLIGHT_CONTENT) {
+    setConfig({ highlightEditableContent: false });
+    hideContentstorageElementsHighlight();
+  }
+
+  if (type === INCOMING_MESSAGE_TYPES.SHOW_ELEMENT_HIGHLIGHT) {
+    const { contentKey } = payload as { contentKey: string };
+    showElementHighlight(contentKey);
+  }
+
+  if (type === INCOMING_MESSAGE_TYPES.HIDE_ELEMENT_HIGHLIGHT) {
+    const { contentKey } = payload as { contentKey: string };
+    hideElementHighlight(contentKey);
+  }
+
+  if (type === INCOMING_MESSAGE_TYPES.SET_CONTENT_KEYS) {
+    const { matches } = payload as IncomingMessagePayloadMap[typeof INCOMING_MESSAGE_TYPES.SET_CONTENT_KEYS];
+    for (const match of matches) {
+      if (match.contentKey) {
+        const existing = window.memoryMap.get(match.text);
+        if (existing) {
+          existing.ids.add(match.contentKey);
+        } else {
+          window.memoryMap.set(match.text, {
+            ids: new Set([match.contentKey]),
+            type: 'text',
+          });
+        }
+      }
+    }
+    const { contentNodes, unmatchedIds } = refreshHighlighting();
+    sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
+      contentNodes,
+      language: null,
+      unmatchedIds,
+    });
+  }
+
+  if (type === INCOMING_MESSAGE_TYPES.SHOW_PENDING_CHANGES) {
+    const pendingChangesData = payload as PendingChangeSimple[];
+    setPendingChanges(pendingChangesData);
+    setConfig({ showPendingChanges: true });
+    showPendingChanges(pendingChangesData);
+  }
+
+  if (type === INCOMING_MESSAGE_TYPES.SHOW_ORIGINAL_CONTENT) {
+    showOriginalContent();
+    clearPendingChanges();
+    setConfig({ showPendingChanges: false });
+  }
+
+  if (type === INCOMING_MESSAGE_TYPES.SET_CONFIG) {
+    setConfig(payload as Parameters<typeof setConfig>[0]);
+  }
+
+  if (type === INCOMING_MESSAGE_TYPES.REQUEST_SCREENSHOT) {
+    const data = payload as { quality?: number; maxWidth?: number } | null;
+    handleScreenshotRequest(data?.quality, data?.maxWidth);
+  }
+}
+
 (function () {
-  const currentScript = document.currentScript as HTMLScriptElement;
-  if (!currentScript) {
-    console.error(
-      "CDN Script: Could not determine the current script element. This is necessary to read URL parameters from the script's own URL. Ensure the script is loaded via a standard <script> tag."
-    );
-    return;
-  }
-  const scriptSrc = currentScript.src;
-  console.log(`[Live editor] CDN Script loaded from ${scriptSrc}`);
-
-  // --- 2. Check for 'contentstorage-live-editor' URL Parameter ---
+  // Extension mode: injected via chrome.scripting.executeScript, no currentScript available
+  const isExtensionMode = !!window.__contentstorageExtensionMode;
+  let scriptSrc = '';
   let liveEditorParamValue: string | null = null;
-  try {
-    const url = new URL(scriptSrc);
-    liveEditorParamValue = url.searchParams.get('contentstorage-live-editor');
-  } catch (e) {
-    console.error(
-      "CDN Script: Could not parse script URL. Ensure it's a valid URL.",
-      e
-    );
-    return;
-  }
 
-  if (!liveEditorParamValue) {
-    console.warn(
-      "CDN Script: The 'contentstorage-live-editor' URL parameter is MISSING in the script's src. This is a prerequisite. Halting further iframe-specific operations."
-    );
-    // You might want to display a message in the iframe or simply stop execution
-    // For example, document.body.innerHTML = "<p>Error: Configuration parameter missing.</p>";
-    return;
+  if (isExtensionMode) {
+    console.log('[Live editor] Extension mode detected, skipping script URL checks.');
+  } else {
+    const currentScriptEl = document.currentScript as HTMLScriptElement;
+    if (!currentScriptEl) {
+      console.error(
+        "CDN Script: Could not determine the current script element. This is necessary to read URL parameters from the script's own URL. Ensure the script is loaded via a standard <script> tag."
+      );
+      return;
+    }
+    scriptSrc = currentScriptEl.src;
+    console.log(`[Live editor] CDN Script loaded from ${scriptSrc}`);
+
+    try {
+      const url = new URL(scriptSrc);
+      liveEditorParamValue = url.searchParams.get('contentstorage-live-editor');
+    } catch (e) {
+      console.error(
+        "CDN Script: Could not parse script URL. Ensure it's a valid URL.",
+        e
+      );
+      return;
+    }
+
+    if (!liveEditorParamValue) {
+      console.warn(
+        "CDN Script: The 'contentstorage-live-editor' URL parameter is MISSING in the script's src. This is a prerequisite. Halting further iframe-specific operations."
+      );
+      return;
+    }
   }
 
   const isInIframe = window.parent && window.parent !== window;
@@ -79,7 +168,52 @@ import { populateFromFlatTranslations } from './helpers/memoryMapUtils';
     }
   })();
 
-  if (isInIframe || isInPipMode || needsReconnection || isStandaloneScreenshotMode) {
+  if (isExtensionMode) {
+    console.log('[Live editor] Running in Chrome extension mode.');
+
+    // Enable extension mode for sendMessageToParent
+    setExtensionMode(true);
+
+    // Initialize memoryMap if not present
+    if (!window.memoryMap) {
+      window.memoryMap = new Map();
+    }
+    if (typeof window.currentLanguageCode === 'undefined') {
+      window.currentLanguageCode = null;
+    }
+    window.isStandaloneMode = true;
+
+    // Highlighting ON with edit buttons
+    setAndApplyInitialConfig({
+      highlightEditableContent: true,
+      showPendingChanges: false,
+      showEditButton: true,
+    });
+
+    // Set up MutationObserver (active)
+    const observer = new MutationObserver(mutationObserverCallback);
+    observer.observe(document.body, mutationObserverConfig);
+    setObserverInstance(observer);
+
+    // Register refresh callback for when translations are received
+    window.__contentstorageRefresh = () => {
+      const { contentNodes, unmatchedIds } = refreshHighlighting();
+      sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
+        contentNodes,
+        language: window.currentLanguageCode || null,
+        unmatchedIds,
+      });
+    };
+
+    // Listen for messages from Chrome extension content script
+    window.addEventListener('message', (event: MessageEvent) => {
+      if (event.data?.source !== 'contentstorage-extension') return;
+      console.log('[Live editor] Extension message received:', event.data.type);
+      handleMessage(event.data.type, event.data.payload);
+    });
+
+    console.log('[Live editor] Extension mode ready. Waiting for translations.');
+  } else if (isInIframe || isInPipMode || needsReconnection || isStandaloneScreenshotMode) {
     const isReconnection = isPipModeReconnection() || needsReconnection;
     console.log(
       isInIframe
@@ -216,119 +350,7 @@ import { populateFromFlatTranslations } from './helpers/memoryMapUtils';
                 '[Live editor] Received further message from parent:',
                 event.data
               );
-
-              if (event.data.type === INCOMING_MESSAGE_TYPES.SET_CONFIG) {
-                setConfig(event.data.payload.data);
-              }
-
-              if (
-                event.data.type === INCOMING_MESSAGE_TYPES.SET_HIGHLIGHT_CONTENT
-              ) {
-                setConfig({ highlightEditableContent: true });
-                markContentStorageElements([], true);
-              }
-
-              if (
-                event.data.type ===
-                INCOMING_MESSAGE_TYPES.SET_HIDE_HIGHLIGHT_CONTENT
-              ) {
-                setConfig({ highlightEditableContent: false });
-                hideContentstorageElementsHighlight();
-              }
-
-              if (
-                event.data.type === INCOMING_MESSAGE_TYPES.HIDE_ELEMENT_HIGHLIGHT
-              ) {
-                const { contentKey } = event.data.payload.data as {
-                  contentKey: string;
-                };
-                hideElementHighlight(contentKey);
-              }
-
-              if (
-                event.data.type === INCOMING_MESSAGE_TYPES.SHOW_ELEMENT_HIGHLIGHT
-              ) {
-                const { contentKey } = event.data.payload.data as {
-                  contentKey: string;
-                };
-                showElementHighlight(contentKey);
-              }
-
-              if (
-                event.data.type === INCOMING_MESSAGE_TYPES.SHOW_PENDING_CHANGES
-              ) {
-                const pendingChangesData = event.data.payload
-                  .data as PendingChangeSimple[];
-                setPendingChanges(pendingChangesData);
-                setConfig({ showPendingChanges: true });
-                showPendingChanges(pendingChangesData);
-              }
-
-              if (
-                event.data.type === INCOMING_MESSAGE_TYPES.SHOW_ORIGINAL_CONTENT
-              ) {
-                showOriginalContent();
-                clearPendingChanges();
-                setConfig({ showPendingChanges: false });
-              }
-
-              if (
-                event.data.type === INCOMING_MESSAGE_TYPES.REQUEST_SCREENSHOT
-              ) {
-                handleScreenshotRequest(event.data.payload?.data?.quality, event.data.payload?.data?.maxWidth);
-              }
-
-              if (
-                event.data.type === INCOMING_MESSAGE_TYPES.SET_CONTENT_KEYS
-              ) {
-                const { matches } = event.data.payload
-                  .data as IncomingMessagePayloadMap[typeof INCOMING_MESSAGE_TYPES.SET_CONTENT_KEYS];
-
-                // Populate memoryMap with matched keys from parent
-                for (const match of matches) {
-                  if (match.contentKey) {
-                    const existing = window.memoryMap.get(match.text);
-                    if (existing) {
-                      existing.ids.add(match.contentKey);
-                    } else {
-                      window.memoryMap.set(match.text, {
-                        ids: new Set([match.contentKey]),
-                        type: 'text',
-                      });
-                    }
-                  }
-                }
-
-                // Refresh highlighting and get found nodes
-                const { contentNodes: foundNodes, unmatchedIds } = refreshHighlighting();
-
-                // Send found content nodes to parent so panel shows only visible keys
-                sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
-                  contentNodes: foundNodes,
-                  language: null,
-                  unmatchedIds,
-                });
-              }
-
-              if (
-                event.data.type === INCOMING_MESSAGE_TYPES.SET_TRANSLATIONS
-              ) {
-                const { languageCode, translations } = event.data.payload
-                  .data as IncomingMessagePayloadMap[typeof INCOMING_MESSAGE_TYPES.SET_TRANSLATIONS];
-
-                window.currentLanguageCode = languageCode;
-                populateFromFlatTranslations(translations);
-
-                const { contentNodes: translationNodes, unmatchedIds: translationUnmatchedIds } = refreshHighlighting();
-
-                sendMessageToParent(OUTGOING_MESSAGE_TYPES.FOUND_CONTENT_NODES, {
-                  contentNodes: translationNodes,
-                  language: languageCode,
-                  unmatchedIds: translationUnmatchedIds,
-                });
-              }
-
-              // Process other messages here
+              handleMessage(event.data.type, event.data.payload?.data);
             } else {
               console.warn(
                 'CDN Script: Received message from parent before handshake was complete. Ignoring:',

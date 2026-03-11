@@ -7,7 +7,7 @@ import {
   showPendingChanges,
 } from './markContentStorageElements';
 import { getPendingChanges, throttle } from './misc';
-import { renderTemplate } from './variableMatching';
+import { renderTemplate, matchesTemplateWithWildcards } from './variableMatching';
 import { normalizeWhitespace, stripHtmlTags } from './htmlUtils';
 import { detectPageLanguage } from './detectLanguage';
 import { sortKeysByPageContext } from './memoryMapUtils';
@@ -208,6 +208,11 @@ export function findAndProcessNodes(): { structuredContent: ContentNode[], detec
               matchedTemplateText = templateText;
               processedAncestors.add(node.parentElement);
               break;
+            } else if (matchesTemplateWithWildcards(templateText, normalizedParentText)) {
+              content = contentData;
+              matchedTemplateText = templateText;
+              processedAncestors.add(node.parentElement);
+              break;
             }
           }
         }
@@ -311,10 +316,23 @@ export function findAndProcessNodes(): { structuredContent: ContentNode[], detec
   // Wave 2: Sibling correction — resolve ambiguous entries using grandparent-level sibling context
   for (const entry of entries) {
     if (entry.contentKey.length > 1 && !entry.reason) {
-      const resolved = trySiblingCorrection(entry, entries, assignedIds);
-      if (resolved) {
-        entry.reason = 'sibling_context';
-        assignedIds.add(entry.contentKey[0]);
+      // Filter out already-assigned keys first
+      const available = entry.contentKey.filter(k => !assignedIds.has(k));
+      if (available.length === 1) {
+        entry.contentKey = available;
+        entry.reason = 'single_match';
+        assignedIds.add(available[0]);
+      } else if (available.length > 1) {
+        entry.contentKey = available;
+        const resolved = trySiblingCorrection(entry, entries, assignedIds);
+        if (resolved) {
+          entry.reason = 'sibling_context';
+          assignedIds.add(entry.contentKey[0]);
+        }
+      } else {
+        // All keys taken — fallback to first original key
+        entry.contentKey = [entry.contentKey[0]];
+        entry.reason = 'ambiguous';
       }
     }
   }
@@ -322,9 +340,21 @@ export function findAndProcessNodes(): { structuredContent: ContentNode[], detec
   // Wave 3: Prefix frequency fallback for remaining ambiguous entries
   for (const entry of entries) {
     if (entry.contentKey.length > 1 && !entry.reason) {
-      entry.contentKey = sortKeysByPageContext(entry.contentKey, assignedIds);
-      assignedIds.add(entry.contentKey[0]);
-      entry.reason = 'prefix_frequency';
+      // Filter out already-assigned keys first
+      const available = entry.contentKey.filter(k => !assignedIds.has(k));
+      if (available.length === 1) {
+        entry.contentKey = available;
+        entry.reason = 'single_match';
+        assignedIds.add(available[0]);
+      } else if (available.length > 1) {
+        entry.contentKey = sortKeysByPageContext(available, assignedIds);
+        assignedIds.add(entry.contentKey[0]);
+        entry.reason = 'prefix_frequency';
+      } else {
+        // All keys taken — fallback to first original key
+        entry.contentKey = [entry.contentKey[0]];
+        entry.reason = 'ambiguous';
+      }
     }
   }
 
@@ -570,6 +600,18 @@ const mutationObserverCallbackOriginal: MutationCallback = (
         return false;
       });
       if (isUIElementAddition) {
+        continue;
+      }
+
+      // Also skip removal of our UI elements (e.g. when hiding highlights)
+      const isUIElementRemoval = Array.from(mutation.removedNodes).some((node) => {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const elem = node as HTMLElement;
+          return elem.id && IGNORED_ELEMENT_IDS.includes(elem.id);
+        }
+        return false;
+      });
+      if (isUIElementRemoval) {
         continue;
       }
     }

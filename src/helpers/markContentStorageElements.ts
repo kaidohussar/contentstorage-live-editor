@@ -1,7 +1,7 @@
 import { sendMessageToParent } from './sendMessageToParent';
 import { ContentNode, OUTGOING_MESSAGE_TYPES } from '../contants';
 import { PendingChangeSimple } from '../types';
-import { renderTemplate } from './variableMatching';
+import { renderTemplate, matchesTemplateWithWildcards } from './variableMatching';
 import { normalizeWhitespace, stripHtmlTags } from './htmlUtils';
 import { getConfig } from './config';
 import { getElementPath } from './elementPath';
@@ -30,7 +30,9 @@ const matchesExact = (
 ): boolean => {
   const normalizedDomText = normalizeWhitespace(domText.trim());
   const rendered = renderTemplate(itemText, variables);
-  return rendered === normalizedDomText;
+  if (rendered === normalizedDomText) return true;
+  // Fallback: wildcard matching for templates with unresolved variables
+  return matchesTemplateWithWildcards(itemText, domText);
 };
 
 const applyProtectedStyles = (
@@ -598,6 +600,11 @@ export const markContentStorageElements = (
                 contentFound = true;
                 break;
               }
+              // Fallback: wildcard matching for templates with unresolved variables
+              if (matchesTemplateWithWildcards(templateText, contentValue)) {
+                contentFound = true;
+                break;
+              }
             }
           }
 
@@ -819,8 +826,12 @@ export const hideContentstorageElementsHighlight = (contentKey?: string) => {
     });
 
     // Remove data-content-key and data-content-ambiguous attributes only when clearing all
+    // But preserve them on elements showing pending changes so they can be re-highlighted
     const elements = document.querySelectorAll<HTMLElement>('[data-content-key]');
     elements.forEach((element) => {
+      if (element.hasAttribute('data-content-showing-pending-change')) {
+        return;
+      }
       element.removeAttribute('data-content-key');
       element.removeAttribute('data-content-ambiguous');
     });
@@ -1048,7 +1059,12 @@ export const showPendingChanges = (pendingChanges: PendingChangeSimple[]) => {
       elem.appendChild(fragment);
     }
 
-    elem.setAttribute('data-content-showing-pending-change', 'true');
+    elem.setAttribute('data-content-showing-pending-change', change.contentId);
+
+    // Re-apply highlight after DOM text replacement (only if highlighting is enabled)
+    if (getConfig().highlightEditableContent) {
+      showElementHighlight(change.contentId);
+    }
 
     console.log('[Pending Changes] ✓ UPDATE APPLIED:', {
       contentId: change.contentId,
@@ -1059,7 +1075,7 @@ export const showPendingChanges = (pendingChanges: PendingChangeSimple[]) => {
 
 export const showOriginalContent = () => {
   const pendingChangesContent = document.querySelectorAll<HTMLElement>(
-    `[data-content-showing-pending-change="true"]`
+    '[data-content-showing-pending-change]'
   );
 
   pendingChangesContent.forEach((pendingChangeElem) => {

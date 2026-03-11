@@ -4,6 +4,13 @@ import { isPipMode } from './urlParams';
 // Store parent window reference (can be set dynamically via event.source during reconnection)
 let parentWindowRef: Window | null = null;
 
+// Extension mode: post to self window with source discrimination
+let extensionMode = false;
+
+export const setExtensionMode = (val: boolean): void => {
+  extensionMode = val;
+};
+
 /**
  * Set the parent window reference dynamically.
  * Used during reconnection when event.source provides a valid reference to the parent.
@@ -38,6 +45,13 @@ export const sendMessageToParent = <T extends OutgoingMessageType>(
     type: msgType,
     payload: data,
   };
+
+  // Extension mode: post to self window with source wrapper for content script to pick up
+  if (extensionMode) {
+    console.log('[Live editor] Sending message via extension bridge:', msg);
+    window.postMessage({ source: 'contentstorage-live-editor', ...msg }, '*');
+    return;
+  }
 
   const targetWindow = getParentWindowRef();
 
