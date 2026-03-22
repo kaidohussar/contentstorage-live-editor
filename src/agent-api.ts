@@ -1,5 +1,5 @@
-import { getElementPath, processDomChanges, pauseObserver, resumeObserver } from './helpers/mutationObserver';
-import { hideContentstorageElementsHighlight } from './helpers/markContentStorageElements';
+import { getElementPath, processDomChanges, findAndProcessNodes, pauseObserver, resumeObserver } from './helpers/mutationObserver';
+import { hideContentstorageElementsHighlight, setIndividuallyHiddenKeys } from './helpers/markContentStorageElements';
 import { populateFromFlatTranslations } from './helpers/memoryMapUtils';
 import { isElementVisible } from './helpers/isElementVisible';
 import { setConfig } from './helpers/config';
@@ -34,6 +34,7 @@ export interface NavigableElement {
 
 export interface ScanOptions {
   candidateThreshold?: number;
+  targetKeyIds?: string[];
 }
 
 /**
@@ -200,6 +201,23 @@ export function initAgentAPI(): void {
       const fuzzyResults = fuzzyMatchContent({
         candidateThreshold: options?.candidateThreshold,
       });
+
+      // If targetKeyIds provided, only highlight target keys with confident matches
+      if (options?.targetKeyIds && options.targetKeyIds.length > 0) {
+        const { structuredContent } = findAndProcessNodes();
+        const targetSet = new Set(options.targetKeyIds);
+        const CONFIDENT_REASONS = new Set(['single_match', 'sibling_context']);
+
+        const keysToHide = new Set<string>();
+        for (const node of structuredContent) {
+          const isTarget = targetSet.has(node.contentKey);
+          const isConfident = node.elements.some(el => CONFIDENT_REASONS.has(el.reason));
+          if (!isTarget || !isConfident) {
+            keysToHide.add(node.contentKey);
+          }
+        }
+        setIndividuallyHiddenKeys(keysToHide);
+      }
 
       // Apply highlighting using enriched memoryMap (aliases make exact matching work)
       processDomChanges();

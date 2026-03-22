@@ -12,6 +12,17 @@ let isProcessing = false;
 // These should be skipped during bulk re-highlighting from MutationObserver
 const individuallyHiddenKeys = new Set<string>();
 
+/**
+ * Bulk-set the individually hidden keys.
+ * Used by agent API to hide non-target or low-confidence keys before highlighting.
+ */
+export const setIndividuallyHiddenKeys = (keys: Set<string>) => {
+  individuallyHiddenKeys.clear();
+  for (const key of keys) {
+    individuallyHiddenKeys.add(key);
+  }
+};
+
 // Map to track content keys → element info (for positioning edit buttons)
 interface ContentElementInfo {
   element: HTMLElement;
